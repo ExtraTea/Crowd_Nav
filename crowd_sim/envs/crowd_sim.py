@@ -288,7 +288,6 @@ class CrowdSim(gym.Env):
         del sim
         return self.human_times
 
-
     def reset(self, phase='test', test_case=None):
         """
         Set px, py, gx, gy, vx, vy, theta for robot and humans
@@ -347,6 +346,17 @@ class CrowdSim(gym.Env):
         # get current observation
         if self.robot.sensor == 'coordinates':
             ob = [human.get_observable_state() for human in self.humans]
+            dg1 = np.sqrt((self.robot.px - self.robot.gx) ** 2 + (self.robot.py - self.robot.gy) ** 2)
+            vel_pref = 0
+            # alpha is the differenve of the current heading to the angle to the goal
+            alpha = np.arctan2(self.robot.gy - self.robot.py, self.robot.gx - self.robot.px) - self.robot.theta
+            #vx_rc and vy_rc is the robot’s current velocity in the robot centered frame. x axis is directed at the goal
+            vx_rc = self.robot.vx * np.cos(alpha) + self.robot.vy * np.sin(alpha)
+            vy_rc = -self.robot.vx * np.sin(alpha) + self.robot.vy * np.cos(alpha)
+            ob1 = [dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc]
+            
+
+
         elif self.robot.sensor == 'RGB':
             raise NotImplementedError
 

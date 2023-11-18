@@ -23,8 +23,7 @@ class Simulator:
         self.global_time_ = 0.0
         self.time_step_ = 0.01
 
-    def add_agent(self, position, radius_, velocity):
-        # raise NotImplementedError("hogehoge")
+    def add_agent(self, position, radius_, velocity, face_orientation):
         """
         Adds a new agent with default properties to the simulation.
 
@@ -47,6 +46,7 @@ class Simulator:
         agent.time_horizon_ = self.default_agent_.time_horizon_
         agent.time_horizon_obst_ = self.default_agent_.time_horizon_obst_
         agent.velocity_ = velocity
+        agent.face_orientation_ = face_orientation
         self.agents_.append(agent)
 
         return agent.id_
