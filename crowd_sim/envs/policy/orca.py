@@ -89,10 +89,10 @@ class ORCA(Policy):
             self.sim = Simulator()
             # set_agent_defaults(self, neighborDist, maxNeighbors, timeHorizon, timeHorizonObst, radius, maxSpeed, velocity)
             self.sim.set_agent_defaults(100.0,       10,            5.0,        5.0,             5.46,   3.0,      Vector2(0.0, 0.0))
-            self.sim.add_agent(Vector2(self_state.px, self_state.py),self_state.radius + 0.01 + self.safety_space, Vector2(self_state.vx, self_state.vy))
+            self.sim.add_agent(Vector2(self_state.px, self_state.py),self_state.radius + 0.01 + self.safety_space, Vector2(self_state.vx, self_state.vy), self_state.face_orientation)
             
             for i, human_state in enumerate(state.human_states):
-                id = self.sim.add_agent(Vector2(human_state.px, human_state.py), human_state.radius + 0.01 + 0.15, Vector2(human_state.vx, human_state.vy))
+                id = self.sim.add_agent(Vector2(human_state.px, human_state.py), human_state.radius + 0.01 + 0.15, Vector2(human_state.vx, human_state.vy), human_state.face_orientation)
                 self.sim.agents_[id].max_speed_ = self.max_speed
 
         # Set the preferred velocity to be a vector of unit magnitude (speed) in the direction of the goal.

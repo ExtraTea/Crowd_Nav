@@ -1,5 +1,5 @@
 import logging
-import gym as gym
+import gymnasium as gym
 import matplotlib.lines as mlines
 import numpy as np
 # import rvo2
@@ -10,14 +10,17 @@ from numpy.linalg import norm
 from crowd_sim.envs.utils.human import Human
 from crowd_sim.envs.utils.info import *
 from crowd_sim.envs.utils.utils import point_to_segment_dist
-
-# from gymnasium.spaces import Box
+import math
+from gymnasium.spaces import Box
 # from gymnasium.spaces import 
+from crowd_nav.policy.sarl import SARL
+from crowd_sim.envs.utils.action import ActionRot, ActionXY
 
 class CrowdSim(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self):
+    def __init__(self, render_mode=None):
+        super(CrowdSim, self).__init__()
         """
         Movement simulation for n+1 agents
         Agent can either be human or robot.
@@ -52,8 +55,18 @@ class CrowdSim(gym.Env):
         self.action_values = None
         self.attention_weights = None
         #for gymnasium update
-        # self.action_space = Box(low=0, high = 2, shape=(2,), dtype=np.float32)
-        # self.observation_space = Box(low=-np.inf, high=np.inf, shape=(5 * self.human_num), dtype=np.float32)
+        # self.action_space = None
+        # self.observation_space = None
+        d = {}
+        d['robot_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(1, 6), dtype=np.float32)
+        pedestrian_obs_dim = 6
+        num_humans = 5
+        d['pedestrian_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(num_humans * pedestrian_obs_dim, ), dtype=np.float32)
+        self.observation_space = gym.spaces.Dict(d)
+
+        high = 1000 * np.ones([2, ])
+        self.action_space = gym.spaces.Box(-high, high, dtype=np.float32)
+        self.set_robot()
 
     def configure(self, config):
         self.config = config
@@ -85,8 +98,19 @@ class CrowdSim(gym.Env):
         logging.info('Training simulation: {}, test simulation: {}'.format(self.train_val_sim, self.test_sim))
         logging.info('Square width: {}, circle width: {}'.format(self.square_width, self.circle_radius))
 
-    def set_robot(self, robot):
-        self.robot = robot
+    def set_robot(self):
+        import os
+        from crowd_sim.envs.utils.robot import Robot
+        import argparse
+        import configparser
+        config_file_path = r'/home/dai/sotsuron/original_crowdnav/CrowdNav/crowd_nav/configs/env.config'
+
+        # configparserのインスタンスを作成し、設定ファイルを読み込む
+        env_config = configparser.RawConfigParser()
+        env_config.read(config_file_path)
+        self.robot = Robot(env_config, 'robot')
+        self.configure(env_config)
+        self.robot.set_policy(SARL())
 
     def generate_random_human_position(self, human_num, rule):
         """
@@ -288,11 +312,13 @@ class CrowdSim(gym.Env):
         del sim
         return self.human_times
 
-    def reset(self, phase='test', test_case=None):
+    def reset(self, phase='train', test_case=None, options=None, seed=None):
         """
         Set px, py, gx, gy, vx, vy, theta for robot and humans
         :return:
         """
+        self.set_robot()
+        # self.robot.set_policy(self.robot.policy)
         if self.robot is None:
             raise AttributeError('robot has to be set!')
         assert phase in ['train', 'val', 'test']
@@ -302,9 +328,10 @@ class CrowdSim(gym.Env):
         if phase == 'test':
             self.human_times = [0] * self.human_num
         else:
-            self.human_times = [0] * (self.human_num if self.robot.policy.multiagent_training else 1)
-        if not self.robot.policy.multiagent_training:
-            self.train_val_sim = 'circle_crossing'
+            # self.human_times = [0] * (self.human_num if self.robot.policy.multiagent_training else 1)
+            self.human_times = [0] * (self.human_num)
+        # if not self.robot.policy.multiagent_training:
+        #     self.train_val_sim = 'circle_crossing'
 
         if self.config.get('humans', 'policy') == 'trajnet':
             raise NotImplementedError
@@ -315,7 +342,8 @@ class CrowdSim(gym.Env):
             if self.case_counter[phase] >= 0:
                 np.random.seed(counter_offset[phase] + self.case_counter[phase])
                 if phase in ['train', 'val']:
-                    human_num = self.human_num if self.robot.policy.multiagent_training else 1
+                    # human_num = self.human_num if self.robot.policy.multiagent_training else 1
+                    human_num = self.human_num
                     self.generate_random_human_position(human_num=human_num, rule=self.train_val_sim)
                 else:
                     self.generate_random_human_position(human_num=self.human_num, rule=self.test_sim)
@@ -345,7 +373,24 @@ class CrowdSim(gym.Env):
 
         # get current observation
         if self.robot.sensor == 'coordinates':
-            ob = [human.get_observable_state() for human in self.humans]
+            
+
+            pedestrian_observations = []
+            for human in self.humans:
+                observable_state = human.get_observable_state()
+                # ObservableState オブジェクトから必要な情報を抽出
+                obs_array = np.array([
+                    observable_state.px, 
+                    observable_state.py, 
+                    observable_state.vx, 
+                    observable_state.vy, 
+                    observable_state.radius, 
+                    math.atan2(observable_state.face_orientation.y_, observable_state.face_orientation.x_)
+                ], dtype=np.float32)
+                pedestrian_observations.append(obs_array)
+
+            # すべての観測値を一つの配列に結合
+            pedestrian_channel = np.concatenate(pedestrian_observations, axis=0)
             dg1 = np.sqrt((self.robot.px - self.robot.gx) ** 2 + (self.robot.py - self.robot.gy) ** 2)
             vel_pref = 0
             # alpha is the differenve of the current heading to the angle to the goal
@@ -353,14 +398,14 @@ class CrowdSim(gym.Env):
             #vx_rc and vy_rc is the robot’s current velocity in the robot centered frame. x axis is directed at the goal
             vx_rc = self.robot.vx * np.cos(alpha) + self.robot.vy * np.sin(alpha)
             vy_rc = -self.robot.vx * np.sin(alpha) + self.robot.vy * np.cos(alpha)
-            ob1 = [dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc]
-            
+            robot_channel = np.array([dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc], dtype=np.float32)
+            obs = {"robot_node": robot_channel, "pedestrian_node": pedestrian_channel}
 
 
         elif self.robot.sensor == 'RGB':
             raise NotImplementedError
-
-        return ob
+        # print(type(obs))
+        return obs, {}
 
     def onestep_lookahead(self, action):
         return self.step(action, update=False)
@@ -388,6 +433,9 @@ class CrowdSim(gym.Env):
                 vx = human.vx - action.vx
                 vy = human.vy - action.vy
             else:
+                acv = action[0]
+                acr = action[1]
+                action = ActionRot(acv, acr)
                 vx = human.vx - action.v * np.cos(action.r + self.robot.theta)
                 vy = human.vy - action.v * np.sin(action.r + self.robot.theta)
             ex = px + vx * self.time_step
@@ -415,7 +463,8 @@ class CrowdSim(gym.Env):
         # check if reaching the goal
         end_position = np.array(self.robot.compute_position(action, self.time_step))
         reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < self.robot.radius
-
+        truncated = False
+        """
         if self.global_time >= self.time_limit - 1:
             reward = 0
             done = True
@@ -438,7 +487,28 @@ class CrowdSim(gym.Env):
             reward = 0
             done = False
             info = Nothing()
-
+        """
+        if self.global_time >= self.time_limit - 1:
+            reward = 0
+            done = True
+            info = {'event': 'timeout'}
+            truncated = True
+        elif collision:
+            reward = self.collision_penalty
+            done = True
+            info = {'event': 'collision'}
+        elif reaching_goal:
+            reward = self.success_reward
+            done = True
+            info = {'event': 'reaching_goal'}
+        elif dmin < self.discomfort_dist:
+            reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
+            done = False
+            info = {'event': 'danger', 'min_dist': dmin}
+        else:
+            reward = 0
+            done = False
+            info = {'event': 'nothing'}
         if update:
             # store state, action value and attention weights
             self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
@@ -459,16 +529,66 @@ class CrowdSim(gym.Env):
 
             # compute the observation
             if self.robot.sensor == 'coordinates':
-                ob = [human.get_observable_state() for human in self.humans]
+                pedestrian_observations = []
+                for human in self.humans:
+                    observable_state = human.get_observable_state()
+                    # ObservableState オブジェクトから必要な情報を抽出
+                    obs_array = np.array([
+                        observable_state.px, 
+                        observable_state.py, 
+                        observable_state.vx, 
+                        observable_state.vy, 
+                        observable_state.radius, 
+                        math.atan2(observable_state.face_orientation.y_, observable_state.face_orientation.x_)
+                    ], dtype=np.float32)
+                    pedestrian_observations.append(obs_array)
+
+                # すべての観測値を一つの配列に結合
+                pedestrian_channel = np.concatenate(pedestrian_observations, axis=0)
+                dg1 = np.sqrt((self.robot.px - self.robot.gx) ** 2 + (self.robot.py - self.robot.gy) ** 2)
+                vel_pref = 0
+                # alpha is the differenve of the current heading to the angle to the goal
+                alpha = np.arctan2(self.robot.gy - self.robot.py, self.robot.gx - self.robot.px) - self.robot.theta
+                #vx_rc and vy_rc is the robot’s current velocity in the robot centered frame. x axis is directed at the goal
+                vx_rc = self.robot.vx * np.cos(alpha) + self.robot.vy * np.sin(alpha)
+                vy_rc = -self.robot.vx * np.sin(alpha) + self.robot.vy * np.cos(alpha)
+                robot_channel = np.array([dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc], dtype=np.float32)
+
+                obs = {"robot_node": robot_channel, "pedestrian_node": pedestrian_channel}
             elif self.robot.sensor == 'RGB':
                 raise NotImplementedError
         else:
             if self.robot.sensor == 'coordinates':
-                ob = [human.get_next_observable_state(action) for human, action in zip(self.humans, human_actions)]
+                pedestrian_observations = []
+                for human in self.humans:
+                    observable_state = human.get_observable_state()
+                    # ObservableState オブジェクトから必要な情報を抽出
+                    obs_array = np.array([
+                        observable_state.px, 
+                        observable_state.py, 
+                        observable_state.vx, 
+                        observable_state.vy, 
+                        observable_state.radius, 
+                        math.atan2(observable_state.face_orientation.y_, observable_state.face_orientation.x_)
+                    ], dtype=np.float32)
+                    pedestrian_observations.append(obs_array)
+
+                # すべての観測値を一つの配列に結合
+                pedestrian_channel = np.concatenate(pedestrian_observations, axis=0)
+                dg1 = np.sqrt((self.robot.px - self.robot.gx) ** 2 + (self.robot.py - self.robot.gy) ** 2)
+                vel_pref = 0
+                # alpha is the differenve of the current heading to the angle to the goal
+                alpha = np.arctan2(self.robot.gy - self.robot.py, self.robot.gx - self.robot.px) - self.robot.theta
+                #vx_rc and vy_rc is the robot’s current velocity in the robot centered frame. x axis is directed at the goal
+                vx_rc = self.robot.vx * np.cos(alpha) + self.robot.vy * np.sin(alpha)
+                vy_rc = -self.robot.vx * np.sin(alpha) + self.robot.vy * np.cos(alpha)
+                robot_channel = np.array([dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc], dtype=np.float32)
+
+                obs = {"robot_node": robot_channel, "pedestrian_node": pedestrian_channel}
             elif self.robot.sensor == 'RGB':
                 raise NotImplementedError
 
-        return ob, reward, done, info
+        return obs, reward, done, truncated, info
 
     def render(self, mode='human', output_file=None):
         from matplotlib import animation

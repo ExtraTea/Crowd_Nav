@@ -40,6 +40,9 @@ class MultiHumanRL(CADRL):
                     next_human_states = [self.propagate(human_state, ActionXY(human_state.vx, human_state.vy))
                                        for human_state in state.human_states]
                     reward = self.compute_reward(next_self_state, next_human_states)
+                print(type(next_self_state))
+                for next_human_state in next_human_states:
+                    print(type(next_human_state))
                 batch_next_states = torch.cat([torch.Tensor([next_self_state + next_human_state]).to(self.device)
                                               for next_human_state in next_human_states], dim=0)
                 rotated_batch_input = self.rotate(batch_next_states).unsqueeze(0)

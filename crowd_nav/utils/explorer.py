@@ -34,11 +34,14 @@ class Explorer(object):
         timeout_cases = []
         for i in range(k):
             ob = self.env.reset(phase)
+            # print(type(ob))
             done = False
             states = []
             actions = []
             rewards = []
             while not done:
+                # print(type(ob))
+                ob = ob["ob2"]
                 action = self.robot.act(ob)
                 ob, reward, done, info = self.env.step(action)
                 states.append(self.robot.policy.last_state)

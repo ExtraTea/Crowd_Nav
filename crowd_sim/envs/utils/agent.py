@@ -5,7 +5,7 @@ import logging
 from crowd_sim.envs.policy.policy_factory import policy_factory
 from crowd_sim.envs.utils.action import ActionXY, ActionRot
 from crowd_sim.envs.utils.state import ObservableState, FullState
-
+from rvo.vector import Vector2
 
 class Agent(object):
     def __init__(self, config, section):
@@ -26,7 +26,9 @@ class Agent(object):
         self.vx = None
         self.vy = None
         self.theta = None
+        self.face_orientation = Vector2(0.0, 0.0)
         self.time_step = None
+
 
     def print_info(self):
         logging.info('Agent is {} and has {} kinematic constraint'.format(
@@ -58,7 +60,8 @@ class Agent(object):
             self.v_pref = v_pref
 
     def get_observable_state(self):
-        return ObservableState(self.px, self.py, self.vx, self.vy, self.radius)
+        # return ObservableState(self.px, self.py, self.vx, self.vy, self.radius, self.face_orientation)
+        return ObservableState(self.px, self.py, self.vx, self.vy, self.radius, self.face_orientation)
 
     def get_next_observable_state(self, action):
         self.check_validity(action)
@@ -71,10 +74,10 @@ class Agent(object):
             next_theta = self.theta + action.r
             next_vx = action.v * np.cos(next_theta)
             next_vy = action.v * np.sin(next_theta)
-        return ObservableState(next_px, next_py, next_vx, next_vy, self.radius)
+        return ObservableState(next_px, next_py, next_vx, next_vy, self.radius, self.face_orientation)
 
     def get_full_state(self):
-        return FullState(self.px, self.py, self.vx, self.vy, self.radius, self.gx, self.gy, self.v_pref, self.theta)
+        return FullState(self.px, self.py, self.vx, self.vy, self.radius, self.gx, self.gy, self.v_pref, self.theta, self.face_orientation)
 
     def get_position(self):
         return self.px, self.py

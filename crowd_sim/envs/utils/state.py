@@ -16,7 +16,7 @@ class FullState(object):
         self.velocity = (self.vx, self.vy)
 
     def __add__(self, other):
-        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.gx, self.gy, self.v_pref, self.theta, self.face_orientation)
+        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.gx, self.gy, self.v_pref, self.theta, self.face_orientation.x_, self.face_orientation.y_,)
 
     def __str__(self):
         return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.gx, self.gy,
@@ -36,10 +36,10 @@ class ObservableState(object):
         self.velocity = (self.vx, self.vy)
 
     def __add__(self, other):
-        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.face_orientation)
+        return other + (self.px, self.py, self.vx, self.vy, self.radius, self.face_orientation.x_, self.face_orientation.y_,)
 
     def __str__(self):
-        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.face_orientation]])
+        return ' '.join([str(x) for x in [self.px, self.py, self.vx, self.vy, self.radius, self.face_orientation.x_, self.face_orientation.y_]])
 
 
 class JointState(object):

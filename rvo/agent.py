@@ -29,7 +29,7 @@ class Agent:
         self.time_horizon_obst_ = 0.0
         self.new_velocity_ = Vector2()
         self.is_robot = False
-        self.face_orientation_ = Vector2()
+        self.face_orientation_ = Vector2(1,1)
         self.angle_of_vision = 90.0 # need to be fixed later                                                                                           
 
     def compute_neighbors(self):
@@ -48,8 +48,8 @@ class Agent:
     def compute_new_velocity(self):
         # print("hoge")
         def angle_between_vectors(a, b):
-            a = np.array([a.x_, a.y_])
-            b = np.array([b.x_, b.y_])
+            a = np.array([a.x, a.y])
+            b = np.array([b.x, b.y])
             # ドット積を計算
             dot_product = np.dot(a, b)
             

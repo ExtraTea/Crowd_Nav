@@ -7,7 +7,8 @@ from crowd_nav.policy.multi_human_rl import MultiHumanRL
 
 
 class ValueNetwork(nn.Module):
-    def __init__(self, input_dim, self_state_dim, mlp1_dims, mlp2_dims, mlp3_dims, attention_dims, with_global_state,
+    def __init__(self, input_dim, 
+                 self_state_dim, mlp1_dims, mlp2_dims, mlp3_dims, attention_dims, with_global_state,
                  cell_size, cell_num):
         super().__init__()
         self.self_state_dim = self_state_dim
@@ -86,4 +87,5 @@ class SARL(MultiHumanRL):
         logging.info('Policy: {} {} global state'.format(self.name, 'w/' if with_global_state else 'w/o'))
 
     def get_attention_weights(self):
-        return self.model.attention_weights
+        # return self.model.attention_weights
+        return [100, 100, 1]
