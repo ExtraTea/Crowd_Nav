@@ -2,7 +2,9 @@ import gymnasium as gym
 import torch
 import torch.nn as nn
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from stable_baselines3.common.callbacks import BaseCallback
 import numpy as np
+from tqdm import tqdm
 
 def build_occupancy_maps(self, human_states):
     """
@@ -112,6 +114,18 @@ class CustomNetwork(BaseFeaturesExtractor):
         concat_feature = self.concat_extractor1(joint_state)
         return concat_feature
 
+class ProgressBarCallback(BaseCallback):
+    def __init__(self, total_timesteps):
+        super(ProgressBarCallback, self).__init__()
+        self.pbar = tqdm(total=total_timesteps)
+
+    def _on_step(self) -> bool:
+        self.pbar.update(1)
+        return True
+
+    def _on_training_end(self):
+        self.pbar.close()
+
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from crowd_sim import *
@@ -120,16 +134,18 @@ import argparse
 import configparser
 import logging
 import time
+
+timesteps = 2000
 # ロギングの設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-n_envs=20
+progress_bar = ProgressBarCallback(total_timesteps=timesteps)
+n_envs=2
 env = make_vec_env('CrowdSim-v0', n_envs=n_envs)
 
 model = PPO("MultiInputPolicy", env, verbose=1)
 start_time = time.time()
 
-model.learn(total_timesteps=20)
+model.learn(total_timesteps=timesteps, callback=progress_bar)
 end_time = time.time()
 model.save("ppo_crowdnav")
 # 所要時間を計算

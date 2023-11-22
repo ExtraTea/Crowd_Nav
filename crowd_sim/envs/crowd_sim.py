@@ -15,9 +15,13 @@ from gymnasium.spaces import Box
 # from gymnasium.spaces import 
 from crowd_nav.policy.sarl import SARL
 from crowd_sim.envs.utils.action import ActionRot, ActionXY
-
+from time import sleep
+from matplotlib import pyplot as plt
 class CrowdSim(gym.Env):
-    metadata = {'render.modes': ['human']}
+    metadata = {
+        'render_modes': ['human', 'rgb_array'],
+        'render_fps': 30  # または適切なフレームレート
+    }
 
     def __init__(self, render_mode=None):
         super(CrowdSim, self).__init__()
@@ -54,11 +58,12 @@ class CrowdSim(gym.Env):
         self.states = None
         self.action_values = None
         self.attention_weights = None
+        self.count = 0
         #for gymnasium update
         # self.action_space = None
         # self.observation_space = None
         d = {}
-        d['robot_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(1, 6), dtype=np.float32)
+        d['robot_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(6,), dtype=np.float32)
         pedestrian_obs_dim = 6
         num_humans = 5
         d['pedestrian_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(num_humans * pedestrian_obs_dim, ), dtype=np.float32)
@@ -90,13 +95,13 @@ class CrowdSim(gym.Env):
             raise NotImplementedError
         self.case_counter = {'train': 0, 'test': 0, 'val': 0}
 
-        logging.info('human number: {}'.format(self.human_num))
-        if self.randomize_attributes:
-            logging.info("Randomize human's radius and preferred speed")
-        else:
-            logging.info("Not randomize human's radius and preferred speed")
-        logging.info('Training simulation: {}, test simulation: {}'.format(self.train_val_sim, self.test_sim))
-        logging.info('Square width: {}, circle width: {}'.format(self.square_width, self.circle_radius))
+        # logging.info('human number: {}'.format(self.human_num))
+        # if self.randomize_attributes:
+        #     logging.info("Randomize human's radius and preferred speed")
+        # else:
+        #     logging.info("Not randomize human's radius and preferred speed")
+        # logging.info('Training simulation: {}, test simulation: {}'.format(self.train_val_sim, self.test_sim))
+        # logging.info('Square width: {}, circle width: {}'.format(self.square_width, self.circle_radius))
 
     def set_robot(self):
         import os
@@ -312,7 +317,7 @@ class CrowdSim(gym.Env):
         del sim
         return self.human_times
 
-    def reset(self, phase='train', test_case=None, options=None, seed=None):
+    def reset(self, phase='test', test_case=None, options=None, seed=None):
         """
         Set px, py, gx, gy, vx, vy, theta for robot and humans
         :return:
@@ -405,6 +410,7 @@ class CrowdSim(gym.Env):
         elif self.robot.sensor == 'RGB':
             raise NotImplementedError
         # print(type(obs))
+        
         return obs, {}
 
     def onestep_lookahead(self, action):
@@ -590,7 +596,7 @@ class CrowdSim(gym.Env):
 
         return obs, reward, done, truncated, info
 
-    def render(self, mode='human', output_file=None):
+    def render(self, mode='traj', output_file=None):
         from matplotlib import animation
         import matplotlib.pyplot as plt
         plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
@@ -619,7 +625,6 @@ class CrowdSim(gym.Env):
             ax.set_ylim(-5, 5)
             ax.set_xlabel('x(m)', fontsize=16)
             ax.set_ylabel('y(m)', fontsize=16)
-
             robot_positions = [self.states[i][0].position for i in range(len(self.states))]
             human_positions = [[self.states[i][1][j].position for j in range(len(self.humans))]
                                for i in range(len(self.states))]
@@ -651,8 +656,12 @@ class CrowdSim(gym.Env):
                     ax.add_artist(nav_direction)
                     for human_direction in human_directions:
                         ax.add_artist(human_direction)
-            plt.legend([robot], ['Robot'], fontsize=16)
-            plt.show()
+                plt.legend([robot], ['Robot'], fontsize=16)
+            self.count +=1
+            print(self.count)
+            if self.count%64==0:
+                plt.show()
+            
         elif mode == 'video':
             fig, ax = plt.subplots(figsize=(7, 7))
             ax.tick_params(labelsize=16)
