@@ -59,19 +59,31 @@ class CrowdSim(gym.Env):
         self.action_values = None
         self.attention_weights = None
         self.count = 0
-        #for gymnasium update
-        # self.action_space = None
-        # self.observation_space = None
         d = {}
-        d['robot_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(6,), dtype=np.float32)
+        d['robot_rotated_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(6,), dtype=np.float64)
         pedestrian_obs_dim = 6
         num_humans = 5
-        d['pedestrian_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(num_humans * pedestrian_obs_dim, ), dtype=np.float32)
+        d['pedestrian_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(num_humans, pedestrian_obs_dim, ), dtype=np.float64)
+        d['angular_map'] = gym.spaces.Box(low=0, high = 5, shape = (72,), dtype=np.float64)
+        d['robot_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(1, pedestrian_obs_dim, ), dtype=np.float64)
         self.observation_space = gym.spaces.Dict(d)
 
         high = 1000 * np.ones([2, ])
-        self.action_space = gym.spaces.Box(-high, high, dtype=np.float32)
+        self.action_space = gym.spaces.Box(-high, high, dtype=np.float64)
         self.set_robot()
+
+        #obstacle
+        self.bottom = -3
+        self.top = 3
+        self.endline = 30
+        self.walls = np.array([
+            [-self.endline, self.bottom, -self.endline, self.top],  # Left wall
+            [self.endline, self.bottom, self.endline, self.top],    # Right wall
+            [-self.endline, self.bottom, self.endline, self.bottom],# Bottom wall
+            [-self.endline, self.top, self.endline, self.top]       # Top wall
+        ])
+
+
 
     def configure(self, config):
         self.config = config
@@ -109,7 +121,7 @@ class CrowdSim(gym.Env):
         import argparse
         import configparser
         config_file_path = r'/home/dai/sotsuron/original_crowdnav/CrowdNav/crowd_nav/configs/env.config'
-
+        
         # configparserのインスタンスを作成し、設定ファイルを読み込む
         env_config = configparser.RawConfigParser()
         env_config.read(config_file_path)
@@ -241,49 +253,7 @@ class CrowdSim(gym.Env):
                 break
         human.set(px, py, gx, gy, 0, 0, 0)
         return human
-
-    def get_human_times_old(self):
-        """
-        Run the whole simulation to the end and compute the average time for human to reach goal.
-        Once an agent reaches the goal, it stops moving and becomes an obstacle
-        (doesn't need to take half responsibility to avoid collision).
-
-        :return:
-        """
-        # centralized orca simulator for all humans
-        if not self.robot.reached_destination():
-            raise ValueError('Episode is not done yet')
-        params = (10, 10, 5, 5)
-        sim = rvo2.PyRVOSimulator(self.time_step, *params, 0.3, 1)
-        sim.addAgent(self.robot.get_position(), *params, self.robot.radius, self.robot.v_pref,
-                     self.robot.get_velocity())
-        for human in self.humans:
-            sim.addAgent(human.get_position(), *params, human.radius, human.v_pref, human.get_velocity())
-
-        max_time = 1000
-        while not all(self.human_times):
-            for i, agent in enumerate([self.robot] + self.humans):
-                vel_pref = np.array(agent.get_goal_position()) - np.array(agent.get_position())
-                if norm(vel_pref) > 1:
-                    vel_pref /= norm(vel_pref)
-                sim.setAgentPrefVelocity(i, tuple(vel_pref))
-            sim.doStep()
-            self.global_time += self.time_step
-            if self.global_time > max_time:
-                logging.warning('Simulation cannot terminate!')
-            for i, human in enumerate(self.humans):
-                if self.human_times[i] == 0 and human.reached_destination():
-                    self.human_times[i] = self.global_time
-
-            # for visualization
-            self.robot.set_position(sim.getAgentPosition(0))
-            for i, human in enumerate(self.humans):
-                human.set_position(sim.getAgentPosition(i + 1))
-            self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
-
-        del sim
-        return self.human_times
-    
+   
     def get_human_times(self):
         if not self.robot.reached_destination():
             raise ValueError('Episode is not done yet')
@@ -323,7 +293,6 @@ class CrowdSim(gym.Env):
         :return:
         """
         self.set_robot()
-        # self.robot.set_policy(self.robot.policy)
         if self.robot is None:
             raise AttributeError('robot has to be set!')
         assert phase in ['train', 'val', 'test']
@@ -378,8 +347,18 @@ class CrowdSim(gym.Env):
 
         # get current observation
         if self.robot.sensor == 'coordinates':
-            
-
+            # create anglular map
+            angular_map = self.create_angular_map(self.robot.px, self.robot.py, self.robot.theta)
+            robot_obs = self.robot.get_full_state()
+            robot_obs = np.array([
+                            robot_obs.px, 
+                            robot_obs.py, 
+                            robot_obs.vx, 
+                            robot_obs.vy, 
+                            robot_obs.radius, 
+                            math.atan2(robot_obs.face_orientation.y_, robot_obs.face_orientation.x_)
+                        ], dtype=np.float64)
+            robot_obs = np.expand_dims(robot_obs, axis=0)
             pedestrian_observations = []
             for human in self.humans:
                 observable_state = human.get_observable_state()
@@ -391,11 +370,12 @@ class CrowdSim(gym.Env):
                     observable_state.vy, 
                     observable_state.radius, 
                     math.atan2(observable_state.face_orientation.y_, observable_state.face_orientation.x_)
-                ], dtype=np.float32)
+                ], dtype=np.float64)
                 pedestrian_observations.append(obs_array)
 
             # すべての観測値を一つの配列に結合
-            pedestrian_channel = np.concatenate(pedestrian_observations, axis=0)
+            # pedestrian_channel = np.concatenate(pedestrian_observations, axis=0)
+            pedestrian_channel = np.array(pedestrian_observations)
             dg1 = np.sqrt((self.robot.px - self.robot.gx) ** 2 + (self.robot.py - self.robot.gy) ** 2)
             vel_pref = 0
             # alpha is the differenve of the current heading to the angle to the goal
@@ -403,13 +383,11 @@ class CrowdSim(gym.Env):
             #vx_rc and vy_rc is the robot’s current velocity in the robot centered frame. x axis is directed at the goal
             vx_rc = self.robot.vx * np.cos(alpha) + self.robot.vy * np.sin(alpha)
             vy_rc = -self.robot.vx * np.sin(alpha) + self.robot.vy * np.cos(alpha)
-            robot_channel = np.array([dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc], dtype=np.float32)
-            obs = {"robot_node": robot_channel, "pedestrian_node": pedestrian_channel}
-
+            robot_channel = np.array([dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc], dtype=np.float64)
+            obs = {"robot_rotated_node": robot_channel, "pedestrian_node": pedestrian_channel, 'angular_map': angular_map, 'robot_node': robot_obs}
 
         elif self.robot.sensor == 'RGB':
             raise NotImplementedError
-        # print(type(obs))
         
         return obs, {}
 
@@ -535,6 +513,17 @@ class CrowdSim(gym.Env):
 
             # compute the observation
             if self.robot.sensor == 'coordinates':
+                angular_map = self.create_angular_map(self.robot.px, self.robot.py, self.robot.theta)
+                robot_obs = self.robot.get_full_state()
+                robot_obs = np.array([
+                            robot_obs.px, 
+                            robot_obs.py, 
+                            robot_obs.vx, 
+                            robot_obs.vy, 
+                            robot_obs.radius, 
+                            math.atan2(robot_obs.face_orientation.y_, robot_obs.face_orientation.x_)
+                        ], dtype=np.float64)
+                robot_obs = np.expand_dims(robot_obs, axis=0)
                 pedestrian_observations = []
                 for human in self.humans:
                     observable_state = human.get_observable_state()
@@ -546,11 +535,12 @@ class CrowdSim(gym.Env):
                         observable_state.vy, 
                         observable_state.radius, 
                         math.atan2(observable_state.face_orientation.y_, observable_state.face_orientation.x_)
-                    ], dtype=np.float32)
+                    ], dtype=np.float64)
                     pedestrian_observations.append(obs_array)
 
                 # すべての観測値を一つの配列に結合
-                pedestrian_channel = np.concatenate(pedestrian_observations, axis=0)
+                # pedestrian_channel = np.concatenate(pedestrian_observations, axis=0)
+                pedestrian_channel = np.array(pedestrian_observations)
                 dg1 = np.sqrt((self.robot.px - self.robot.gx) ** 2 + (self.robot.py - self.robot.gy) ** 2)
                 vel_pref = 0
                 # alpha is the differenve of the current heading to the angle to the goal
@@ -558,13 +548,24 @@ class CrowdSim(gym.Env):
                 #vx_rc and vy_rc is the robot’s current velocity in the robot centered frame. x axis is directed at the goal
                 vx_rc = self.robot.vx * np.cos(alpha) + self.robot.vy * np.sin(alpha)
                 vy_rc = -self.robot.vx * np.sin(alpha) + self.robot.vy * np.cos(alpha)
-                robot_channel = np.array([dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc], dtype=np.float32)
+                robot_channel = np.array([dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc], dtype=np.float64)
 
-                obs = {"robot_node": robot_channel, "pedestrian_node": pedestrian_channel}
+                obs = {"robot_rotated_node": robot_channel, "pedestrian_node": pedestrian_channel, 'angular_map': angular_map, 'robot_node': robot_obs}
             elif self.robot.sensor == 'RGB':
                 raise NotImplementedError
         else:
             if self.robot.sensor == 'coordinates':
+                angular_map = self.create_angular_map(self.robot.px, self.robot.py, self.robot.theta)
+                robot_obs = self.robot.get_full_state()
+                robot_obs = np.array([
+                            robot_obs.px, 
+                            robot_obs.py, 
+                            robot_obs.vx, 
+                            robot_obs.vy, 
+                            robot_obs.radius, 
+                            math.atan2(robot_obs.face_orientation.y_, robot_obs.face_orientation.x_)
+                        ], dtype=np.float64)
+                robot_obs = np.expand_dims(robot_obs, axis=0)
                 pedestrian_observations = []
                 for human in self.humans:
                     observable_state = human.get_observable_state()
@@ -576,11 +577,12 @@ class CrowdSim(gym.Env):
                         observable_state.vy, 
                         observable_state.radius, 
                         math.atan2(observable_state.face_orientation.y_, observable_state.face_orientation.x_)
-                    ], dtype=np.float32)
+                    ], dtype=np.float64)
                     pedestrian_observations.append(obs_array)
 
                 # すべての観測値を一つの配列に結合
-                pedestrian_channel = np.concatenate(pedestrian_observations, axis=0)
+                # pedestrian_channel = np.concatenate(pedestrian_observations, axis=0)
+                pedestrian_channel = np.array(pedestrian_observations)
                 dg1 = np.sqrt((self.robot.px - self.robot.gx) ** 2 + (self.robot.py - self.robot.gy) ** 2)
                 vel_pref = 0
                 # alpha is the differenve of the current heading to the angle to the goal
@@ -588,9 +590,9 @@ class CrowdSim(gym.Env):
                 #vx_rc and vy_rc is the robot’s current velocity in the robot centered frame. x axis is directed at the goal
                 vx_rc = self.robot.vx * np.cos(alpha) + self.robot.vy * np.sin(alpha)
                 vy_rc = -self.robot.vx * np.sin(alpha) + self.robot.vy * np.cos(alpha)
-                robot_channel = np.array([dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc], dtype=np.float32)
+                robot_channel = np.array([dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc], dtype=np.float64)
 
-                obs = {"robot_node": robot_channel, "pedestrian_node": pedestrian_channel}
+                obs = {"robot_rotated_node": robot_channel, "pedestrian_node": pedestrian_channel, 'angular_map': angular_map, 'robot_node': robot_obs}
             elif self.robot.sensor == 'RGB':
                 raise NotImplementedError
 
@@ -788,3 +790,30 @@ class CrowdSim(gym.Env):
                 plt.show()
         else:
             raise NotImplementedError
+
+    def create_angular_map(self, robot_x, robot_y, robot_theta):
+        def calculate_wall_distance(px, py, ray_angle):
+            x1, y1, x2, y2 = self.walls.T
+            denominator = (x1 - x2) * np.sin(ray_angle) - (y1 - y2) * np.cos(ray_angle)
+            valid = denominator != 0
+
+            t = ((x1 - px) * np.sin(ray_angle) - (y1 - py) * np.cos(ray_angle)) / denominator
+            u = -((x1 - x2) * (y1 - py) - (y1 - y2) * (x1 - px)) / denominator
+
+            valid &= (t >= 0) & (t <= 1) & (u >= 0)
+            ix = x1 + t * (x2 - x1)
+            iy = y1 + t * (y2 - y1)
+            distances = np.sqrt((ix - px) ** 2 + (iy - py) ** 2)
+
+            min_distance = np.min(distances[valid]) if np.any(valid) else float('inf')
+            return min_distance
+        
+        angles = np.arange(0, 360, 5)
+        ray_angles = np.radians(angles + robot_theta)
+        angular_map = np.ones(angles.size) * 5  # Initialize the map, every 5 degrees, with a maximum of 5 meters
+        for i, ray_angle in enumerate(ray_angles):
+            distance = calculate_wall_distance(robot_x, robot_y, ray_angle)
+            angular_map[i] = min(distance, 5)  # Limit distance to 5 meters
+
+        return angular_map
+        

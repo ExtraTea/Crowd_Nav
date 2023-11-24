@@ -1,0 +1,1 @@
+print(type(next_self_state))
