@@ -10,7 +10,6 @@ model = PPO.load(model_path)
 env = gym.make('CrowdSim-v0', render_mode='human')
 state, info  = env.reset()
 done = False
-# print(state.size())
 while True:
     env.render()
     action, _ = model.predict(state)
@@ -19,6 +18,3 @@ while True:
     if done:
         state, info  = env.reset()
     
-        
-
-env.close()

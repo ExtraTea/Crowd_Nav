@@ -287,7 +287,7 @@ class CrowdSim(gym.Env):
         del sim
         return self.human_times
 
-    def reset(self, phase='test', test_case=None, options=None, seed=None):
+    def reset(self, phase='train', test_case=None, options=None, seed=None):
         """
         Set px, py, gx, gy, vx, vy, theta for robot and humans
         :return:

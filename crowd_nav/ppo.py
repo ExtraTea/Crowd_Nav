@@ -272,7 +272,14 @@ class CustomNetwork(BaseFeaturesExtractor):
         robot_rotated_input = robot_rotated_input.squeeze(0).squeeze(0)
 
         weighted_feature = weighted_feature.squeeze(0)
-        joint_state = torch.cat([robot_rotated_input, weighted_feature, obstacle_feature], dim=1)
+        # print(weighted_feature.size())
+        # print(robot_rotated_input.size())
+        # print(obstacle_feature.size())
+        obstacle_feature = obstacle_feature.squeeze(0)
+        if weighted_feature.dim() == 1:
+            joint_state = torch.cat([robot_rotated_input, weighted_feature, obstacle_feature], dim=0)
+        else :
+            joint_state = torch.cat([robot_rotated_input, weighted_feature, obstacle_feature], dim=1)
         concat_feature = self.concat_extractor1(joint_state)
         return concat_feature
 
@@ -299,7 +306,7 @@ import time
 if __name__ == '__main__':
     
     # 訓練の設定
-    timesteps = 1024*16
+    timesteps = 1024*4
     n_envs=2
 
     # ロギングの設定
@@ -307,6 +314,7 @@ if __name__ == '__main__':
     progress_bar = ProgressBarCallback(total_timesteps=timesteps/n_envs)
 
     env = make_vec_env('CrowdSim-v0', vec_env_cls=DummyVecEnv, n_envs=n_envs)
+    # env = gym.make('CrowdSim-v0')
     # env = Monitor(env, filename='logs/')
     eval_env = gym.make('CrowdSim-v0')
     # tensorboard_log = 'logs/'
