@@ -14,7 +14,5 @@ while True:
     env.render()
     action, _ = model.predict(state)
     state, rew, done,truncated, info = env.step(action)
-    plt.close()
     if done:
         state, info  = env.reset()
-    

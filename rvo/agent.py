@@ -30,7 +30,7 @@ class Agent:
         self.new_velocity_ = Vector2()
         self.is_robot = False
         self.face_orientation_ = Vector2(1,1)
-        self.angle_of_vision = 90.0 # need to be fixed later                                                                                           
+        self.angle_of_vision = 180.0 # need to be fixed later                                                                                    
 
     def compute_neighbors(self):
         """

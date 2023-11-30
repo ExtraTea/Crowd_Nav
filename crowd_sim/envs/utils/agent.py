@@ -116,7 +116,7 @@ class Agent(object):
             px = self.px + action.vx * delta_t
             py = self.py + action.vy * delta_t
         else:
-            theta = self.theta + action.r
+            theta = action.r
             px = self.px + np.cos(theta) * action.v * delta_t
             py = self.py + np.sin(theta) * action.v * delta_t
 
@@ -134,8 +134,9 @@ class Agent(object):
             self.vy = action.vy
         else:
             self.theta = (self.theta + action.r) % (2 * np.pi)
-            self.vx = action.v * np.cos(self.theta)
-            self.vy = action.v * np.sin(self.theta)
+            self.vx = action.v * np.cos(action.r)
+            self.vy = action.v * np.sin(action.r)
+            
 
     def reached_destination(self):
         return norm(np.array(self.get_position()) - np.array(self.get_goal_position())) < self.radius

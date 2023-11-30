@@ -59,6 +59,7 @@ class CrowdSim(gym.Env):
         self.action_values = None
         self.attention_weights = None
         self.count = 0
+        # for gym
         d = {}
         d['robot_rotated_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(6,), dtype=np.float64)
         pedestrian_obs_dim = 6
@@ -67,12 +68,11 @@ class CrowdSim(gym.Env):
         d['angular_map'] = gym.spaces.Box(low=0, high = 5, shape = (72,), dtype=np.float64)
         d['robot_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(1, pedestrian_obs_dim, ), dtype=np.float64)
         self.observation_space = gym.spaces.Dict(d)
-
         high = 1000 * np.ones([2, ])
         self.action_space = gym.spaces.Box(-high, high, dtype=np.float64)
         self.set_robot()
 
-        #obstacle
+        # for wall obstacle
         self.bottom = -3
         self.top = 3
         self.endline = 30
@@ -83,7 +83,7 @@ class CrowdSim(gym.Env):
             [-self.endline, self.top, self.endline, self.top]       # Top wall
         ])
 
-
+        self.fig, self.ax = plt.subplots(figsize=(7, 7))
 
     def configure(self, config):
         self.config = config
@@ -116,9 +116,7 @@ class CrowdSim(gym.Env):
         # logging.info('Square width: {}, circle width: {}'.format(self.square_width, self.circle_radius))
 
     def set_robot(self):
-        import os
         from crowd_sim.envs.utils.robot import Robot
-        import argparse
         import configparser
         config_file_path = r'/home/dai/sotsuron/original_crowdnav/CrowdNav/crowd_nav/configs/env.config'
         
@@ -128,6 +126,7 @@ class CrowdSim(gym.Env):
         self.robot = Robot(env_config, 'robot')
         self.configure(env_config)
         self.robot.set_policy(SARL())
+        
 
     def generate_random_human_position(self, human_num, rule):
         """
@@ -312,9 +311,9 @@ class CrowdSim(gym.Env):
         else:
             counter_offset = {'train': self.case_capacity['val'] + self.case_capacity['test'],
                               'val': 0, 'test': self.case_capacity['val']}
-            self.robot.set(0, -self.circle_radius, 0, self.circle_radius, 0, 0, np.pi / 2)
+            self.robot.set(0, -self.circle_radius, 2, self.circle_radius, 0, 0, np.pi / 2)
             if self.case_counter[phase] >= 0:
-                np.random.seed(counter_offset[phase] + self.case_counter[phase])
+                # np.random.seed(counter_offset[phase] + self.case_counter[phase])
                 if phase in ['train', 'val']:
                     # human_num = self.human_num if self.robot.policy.multiagent_training else 1
                     human_num = self.human_num
@@ -403,13 +402,20 @@ class CrowdSim(gym.Env):
         for human in self.humans:
             # observation for humans is always coordinates
             ob = [other_human.get_observable_state() for other_human in self.humans if other_human != human]
-            if self.robot.visible:
+            # if self.robot.visible:
+            if True:
                 ob += [self.robot.get_observable_state()]
             human_actions.append(human.act(ob))
-
+        # for imitaion learning
+        ob = [other_human.get_observable_state() for other_human in self.humans]
+        robot_action = self.robot.imact(ob)
+        action = robot_action
+        # action = np.array([1, math.pi])
+        # print("robot goal: ", self.robot.px, self.robot.py)
         # collision detection
         dmin = float('inf')
         collision = False
+        info = None
         for i, human in enumerate(self.humans):
             px = human.px - self.robot.px
             py = human.py - self.robot.py
@@ -448,51 +454,27 @@ class CrowdSim(gym.Env):
         end_position = np.array(self.robot.compute_position(action, self.time_step))
         reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < self.robot.radius
         truncated = False
-        """
         if self.global_time >= self.time_limit - 1:
             reward = 0
             done = True
-            info = Timeout()
-        elif collision:
-            reward = self.collision_penalty
-            done = True
-            info = Collision()
-        elif reaching_goal:
-            reward = self.success_reward
-            done = True
-            info = ReachGoal()
-        elif dmin < self.discomfort_dist:
-            # only penalize agent for getting too close if it's visible
-            # adjust the reward based on FPS
-            reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
-            done = False
-            info = Danger(dmin)
-        else:
-            reward = 0
-            done = False
-            info = Nothing()
-        """
-        if self.global_time >= self.time_limit - 1:
-            reward = 0
-            done = True
-            info = {'event': 'timeout'}
+            info = {'event': 'timeout', 'action': np.array([action.v, action.r])}
             truncated = True
         elif collision:
             reward = self.collision_penalty
             done = True
-            info = {'event': 'collision'}
+            info = {'event': 'collision', 'action': np.array([action.v, action.r])}
         elif reaching_goal:
             reward = self.success_reward
             done = True
-            info = {'event': 'reaching_goal'}
+            info = {'event': 'reaching_goal', 'action': np.array([action.v, action.r])}
         elif dmin < self.discomfort_dist:
             reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
             done = False
-            info = {'event': 'danger', 'min_dist': dmin}
+            info = {'event': 'danger', 'min_dist': dmin, 'action': np.array([action.v, action.r])}
         else:
             reward = 0
             done = False
-            info = {'event': 'nothing'}
+            info = {'event': 'nothing', 'action': np.array([action.v, action.r])}
         if update:
             # store state, action value and attention weights
             self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])
@@ -598,7 +580,7 @@ class CrowdSim(gym.Env):
 
         return obs, reward, done, truncated, info
 
-    def render(self, mode='traj', output_file=None):
+    def render(self, mode='human', output_file=None):
         from matplotlib import animation
         import matplotlib.pyplot as plt
         plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
@@ -612,14 +594,17 @@ class CrowdSim(gym.Env):
         arrow_style = patches.ArrowStyle("->", head_length=4, head_width=2)
 
         if mode == 'human':
-            fig, ax = plt.subplots(figsize=(7, 7))
-            ax.set_xlim(-4, 4)
-            ax.set_ylim(-4, 4)
+            self.ax.clear()
+            self.ax.set_xlim(-6, 6)
+            self.ax.set_ylim(-6, 6)
             for human in self.humans:
                 human_circle = plt.Circle(human.get_position(), human.radius, fill=False, color='b')
-                ax.add_artist(human_circle)
-            ax.add_artist(plt.Circle(self.robot.get_position(), self.robot.radius, fill=True, color='r'))
-            plt.show()
+                self.ax.add_artist(human_circle)
+            self.ax.add_artist(plt.Circle(self.robot.get_position(), self.robot.radius, fill=True, color='r'))
+            plt.draw()
+            plt.pause(0.001)
+
+        
         elif mode == 'traj':
             fig, ax = plt.subplots(figsize=(7, 7))
             ax.tick_params(labelsize=16)
