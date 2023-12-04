@@ -13,6 +13,10 @@ import numpy as np
 from tqdm import tqdm
 import logging
 import time
+from imitation.data import rollout
+from imitation.algorithms.bc import BC
+from stable_baselines3.common.policies import ActorCriticPolicy
+from imitation.data.types import Transitions
 
 def build_occupancy_maps_batched(self, all_pedestrian_inputs):
     num_envs, num_humans, _ = all_pedestrian_inputs.size()
@@ -121,14 +125,50 @@ class CustomNetwork(BaseFeaturesExtractor):
 
         #concat channel
         self.concat_extractor1 = mlp(100+6+50, [100 , 100], last_relu=True)
-        
-    
+         
     def forward(self, obs):
+        hardcoded_original_shapes = [
+            (6,),       # array1の形状
+            (5, 6),     # array2の形状
+            (72,),      # array3の形状
+            (1, 6),     # array4の形状
+        ]
+
+        def reshape_to_original(combined_array, original_shapes):
+            arrays = []
+            start = 0
+            for shape in original_shapes:
+                size = np.prod(shape)
+                array = combined_array[start:start+size].reshape(shape)
+                arrays.append(array)
+                start += size
+            return arrays
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        robot_rotated_input = obs['robot_rotated_node'].float().to(device)
-        pedestrian_input = obs['pedestrian_node'].float().to(device)
-        obstacle_input = obs['angular_map'].float().to(device)
-        robot_input = obs['robot_node'].float().to(device)
+        # robot_rotated_input = obs['robot_rotated_node'].float().to(device)
+        # pedestrian_input = obs['pedestrian_node'].float().to(device)
+        # obstacle_input = obs['angular_map'].float().to(device)
+        # robot_input = obs['robot_node'].float().to(device)
+        
+        numpy_array = obs.cpu().numpy()
+        reshaped_batches = []
+        for batch in numpy_array:
+            reshaped_batches.append(reshape_to_original(batch, hardcoded_original_shapes))
+
+        # 各形状ごとに配列をスタック
+        final_arrays = []
+        for i in range(len(hardcoded_original_shapes)):
+            stacked_array = np.stack([batch[i] for batch in reshaped_batches])
+            final_arrays.append(stacked_array)
+
+        # print(final_arrays[0].shape)
+
+        # 形状の確認
+        final_shapes = [arr.shape for arr in final_arrays]
+        robot_rotated_input = torch.from_numpy(final_arrays[0]).to(device)
+        pedestrian_input = torch.from_numpy(final_arrays[1]).to(device)
+        print(pedestrian_input.size())
+        obstacle_input = torch.from_numpy(final_arrays[2]).to(device)
+        robot_input = torch.from_numpy(final_arrays[3]).to(device)
 
         occupancy_maps = build_occupancy_maps_batched(self, pedestrian_input)
         pedestrian_input.squeeze(0)
@@ -170,9 +210,65 @@ class ProgressBarCallback(BaseCallback):
 
     def _on_training_end(self):
         self.pbar.close()
-
-
+def constant_lr_schedule(_):
+    return 0.001
+def make_policy(env):
+    lr_schedule = constant_lr_schedule
+    return ActorCriticPolicy(
+        lr_schedule =lr_schedule,
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        features_extractor_class=CustomNetwork,
+        features_extractor_kwargs={"features_dim": 100}
+    )
 if __name__ == '__main__': 
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # #imitation
+
+    expert_dataset = torch.load("expert_dataset.pt")
+    expert_obs, expert_act, expert_done, expert_info = expert_dataset['observations'], expert_dataset['actions'], expert_dataset['dones'], expert_dataset['infos']
+
+    env = gym.make('CrowdSim-v0')
+    policy_kwargs = dict(
+        features_extractor_class=CustomNetwork,
+        features_extractor_kwargs=dict(features_dim=100),
+    )
+    model = PPO("MultiInputPolicy", env, policy_kwargs=policy_kwargs, verbose=1,  tensorboard_log="./ppo_tensorboard/")
+    empty_infos = [{} for _ in range(len(expert_obs))]
+    # Wra  p yo r data in the Transitions class
+    episodes = zip(expert_obs, expert_act, expert_done)
+
+    # 学習ループ
+    for episode_obs, episode_act, episode_done in episodes:
+        # next_obsを計算（最後の観測に対してはNoneを使用）
+        episode_next_obs = episode_obs[1:] + [np.zeros(114)]
+        # print(len(episode_obs))
+        for i in range(37):
+            print(len(episode_next_obs[i]))
+
+        # infosに対応する空のリストを作成
+        episode_infos = [{} for _ in range(len(episode_obs))]
+
+        # エピソードごとのTransitionsオブジェクトを作成
+        episode_transitions = Transitions(
+            obs=torch.tensor(np.array(episode_obs)).to(device),
+            acts=torch.tensor(np.array(episode_act)).to('cpu'),
+            next_obs=torch.tensor(np.array(episode_next_obs)).to(device),
+            dones=np.array(episode_done),
+            infos=episode_infos
+        )
+
+        # BCトレーナーのインスタンスを作成
+        bc_trainer = BC(
+            rng = np.random.default_rng(0),
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            policy=make_policy(env),
+            demonstrations=episode_transitions  # あなたの専門家データセット
+        )
+        # トレーニングを実行
+        bc_trainer.policy.to(device)
+        bc_trainer.train(n_epochs=100)
     # 訓練の設定
     timesteps = 1024*16
     n_envs=2
@@ -187,13 +283,9 @@ if __name__ == '__main__':
         features_extractor_class=CustomNetwork,
         features_extractor_kwargs=dict(features_dim=100),
     )
-    with torch.autograd.profiler.profile(use_cuda=True) as prof:
-        model = PPO("MultiInputPolicy", env, policy_kwargs=policy_kwargs, verbose=1,  tensorboard_log="./ppo_tensorboard/")
-    print(prof)
-    print(prof.key_averages().table(sort_by="self_cuda_time_total"))
     
     start_time = time.time()
-
+    model = PPO("MultiInputPolicy", env, policy_kwargs=policy_kwargs, verbose=1,  tensorboard_log="./ppo_tensorboard/")
     model.learn(total_timesteps=timesteps, tb_log_name="first_run", callback=progress_bar)
     end_time = time.time()
     model.save("ppo_crowdnav")

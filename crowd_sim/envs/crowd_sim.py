@@ -60,14 +60,15 @@ class CrowdSim(gym.Env):
         self.attention_weights = None
         self.count = 0
         # for gym
-        d = {}
-        d['robot_rotated_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(6,), dtype=np.float64)
-        pedestrian_obs_dim = 6
-        num_humans = 5
-        d['pedestrian_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(num_humans, pedestrian_obs_dim, ), dtype=np.float64)
-        d['angular_map'] = gym.spaces.Box(low=0, high = 5, shape = (72,), dtype=np.float64)
-        d['robot_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(1, pedestrian_obs_dim, ), dtype=np.float64)
-        self.observation_space = gym.spaces.Dict(d)
+        # d = {}
+        # d['robot_rotated_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(6,), dtype=np.float64)
+        # pedestrian_obs_dim = 6
+        # num_humans = 5
+        # d['pedestrian_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(num_humans, pedestrian_obs_dim, ), dtype=np.float64)
+        # d['angular_map'] = gym.spaces.Box(low=0, high = 5, shape = (72,), dtype=np.float64)
+        # d['robot_node'] = gym.spaces.Box(low=-1000, high=1000, shape=(1, pedestrian_obs_dim, ), dtype=np.float64)
+        # self.observation_space = gym.spaces.Dict(d)
+        self.observation_space = gym.spaces.Box(low=-1000, high=1000, shape=(114, ), dtype=np.float64)
         high = 1000 * np.ones([2, ])
         self.action_space = gym.spaces.Box(-high, high, dtype=np.float64)
         self.set_robot()
@@ -383,7 +384,14 @@ class CrowdSim(gym.Env):
             vx_rc = self.robot.vx * np.cos(alpha) + self.robot.vy * np.sin(alpha)
             vy_rc = -self.robot.vx * np.sin(alpha) + self.robot.vy * np.cos(alpha)
             robot_channel = np.array([dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc], dtype=np.float64)
-            obs = {"robot_rotated_node": robot_channel, "pedestrian_node": pedestrian_channel, 'angular_map': angular_map, 'robot_node': robot_obs}
+            combined_array = np.concatenate([
+                robot_channel.flatten(),     # 1次元に平坦化
+                pedestrian_channel.flatten(),     # 1次元に平坦化
+                angular_map.flatten(),     # 既に1次元
+                robot_obs.flatten()      # 1次元に平坦化
+            ])
+            # obs = {"robot_rotated_node": robot_channel, "pedestrian_node": pedestrian_channel, 'angular_map': angular_map, 'robot_node': robot_obs}
+            obs = combined_array
 
         elif self.robot.sensor == 'RGB':
             raise NotImplementedError
@@ -406,7 +414,7 @@ class CrowdSim(gym.Env):
             if True:
                 ob += [self.robot.get_observable_state()]
             human_actions.append(human.act(ob))
-        # for imitaion learning
+        # for imitation learning
         ob = [other_human.get_observable_state() for other_human in self.humans]
         robot_action = self.robot.imact(ob)
         action = robot_action
@@ -532,7 +540,14 @@ class CrowdSim(gym.Env):
                 vy_rc = -self.robot.vx * np.sin(alpha) + self.robot.vy * np.cos(alpha)
                 robot_channel = np.array([dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc], dtype=np.float64)
 
-                obs = {"robot_rotated_node": robot_channel, "pedestrian_node": pedestrian_channel, 'angular_map': angular_map, 'robot_node': robot_obs}
+                combined_array = np.concatenate([
+                    robot_channel.flatten(),     # 1次元に平坦化
+                    pedestrian_channel.flatten(),     # 1次元に平坦化
+                    angular_map.flatten(),     # 既に1次元
+                    robot_obs.flatten()      # 1次元に平坦化
+                ])
+                # obs = {"robot_rotated_node": robot_channel, "pedestrian_node": pedestrian_channel, 'angular_map': angular_map, 'robot_node': robot_obs}
+                obs = combined_array
             elif self.robot.sensor == 'RGB':
                 raise NotImplementedError
         else:
@@ -574,7 +589,14 @@ class CrowdSim(gym.Env):
                 vy_rc = -self.robot.vx * np.sin(alpha) + self.robot.vy * np.cos(alpha)
                 robot_channel = np.array([dg1, vel_pref, alpha, self.robot.radius, vx_rc, vy_rc], dtype=np.float64)
 
-                obs = {"robot_rotated_node": robot_channel, "pedestrian_node": pedestrian_channel, 'angular_map': angular_map, 'robot_node': robot_obs}
+                combined_array = np.concatenate([
+                    robot_channel.flatten(),     # 1次元に平坦化
+                    pedestrian_channel.flatten(),     # 1次元に平坦化
+                    angular_map.flatten(),     # 既に1次元
+                    robot_obs.flatten()      # 1次元に平坦化
+                ])
+                # obs = {"robot_rotated_node": robot_channel, "pedestrian_node": pedestrian_channel, 'angular_map': angular_map, 'robot_node': robot_obs}
+                obs = combined_array            
             elif self.robot.sensor == 'RGB':
                 raise NotImplementedError
 
