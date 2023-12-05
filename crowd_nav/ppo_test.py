@@ -4,6 +4,7 @@ from crowd_sim import *
 from matplotlib import pyplot as plt
 # 保存したモデルのファイルパス
 model_path = "ppo_crowdnav.zip"
+model_path = "ppo_crowdnav_imitation.zip"
 
 # モデルをロード
 model = PPO.load(model_path)

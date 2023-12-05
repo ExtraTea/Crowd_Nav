@@ -251,42 +251,6 @@ if __name__ == '__main__':
 
     model = PPO("MultiInputPolicy", env, policy_kwargs=policy_kwargs, verbose=1, tensorboard_log="./ppo_tensorboard/")
     
-    # 学習ループ
-    # for episode_obs, episode_act, episode_done in zip(expert_obs, expert_act, expert_done):
-    #     # 次の観測を計算
-    #     episode_next_obs = episode_obs[1:] + [np.zeros(114)]
-
-    #     # エピソードごとのTransitionsオブジェクトを作成
-    #     episode_transitions = Transitions(
-    #         obs=torch.tensor(np.array(episode_obs)).to('cpu'),
-    #         acts=torch.tensor(np.array(episode_act)).to('cpu'),
-    #         next_obs=torch.tensor(np.array(episode_next_obs)).to('cpu'),
-    #         dones=np.array(episode_done),
-    #         infos=[{} for _ in range(len(episode_obs))]
-    #     )
-
-    #     # GAILトレーナーの設定
-    #     reward_net = BasicRewardNet(
-    #         observation_space=env.observation_space,
-    #         action_space=env.action_space,
-    #         normalize_input_layer=RunningNorm,
-    #     )
-
-    #     gail_trainer = GAIL(
-    #         demonstrations=episode_transitions,
-    #         demo_batch_size=37,
-    #         gen_replay_buffer_capacity=512,
-    #         n_disc_updates_per_round=8,
-    #         venv=env,
-    #         gen_algo=model,
-    #         reward_net=reward_net,
-    #     )
-
-    #     # GAILでのトレーニング実行
-    #     gail_trainer.policy.to(device)
-    #     gail_trainer.train(20000)
-    #     trained_model = gail_trainer.gen_algo
-    #     model = trained_model
     all_obs = np.concatenate(expert_obs)
     all_acts = np.concatenate(expert_act)
     all_dones = np.concatenate(expert_done)
@@ -322,7 +286,7 @@ if __name__ == '__main__':
     model.save("ppo_crowdnav_imitation")
     print("imitation learning done")
     # PPOでの追加トレーニング
-    timesteps = 1024 * 1024* 8
+    timesteps = 1024 * 1024 * 8
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     progress_bar = ProgressBarCallback(total_timesteps=timesteps / 4)  # n_envs=2 なので、timestepsを2で割る
 

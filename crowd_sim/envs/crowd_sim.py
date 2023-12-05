@@ -596,7 +596,7 @@ class CrowdSim(gym.Env):
                 obs = combined_array            
             elif self.robot.sensor == 'RGB':
                 raise NotImplementedError
-        rewards = rewards.astype(np.float32)
+        # rewards = rewards.astype(np.float32)
         return obs, reward, done, truncated, info
 
     def render(self, mode='human', output_file=None):

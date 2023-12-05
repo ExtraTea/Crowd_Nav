@@ -16,7 +16,7 @@ actions_temp = []
 done_temp = []
 info_temp = []
 while True:
-    # env.render()
+    env.render()
     last_state = copy.deepcopy(state)
     state, rew, done, truncated, info = env.step(None)
     observations_temp.append(last_state)
