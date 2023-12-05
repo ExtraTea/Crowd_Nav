@@ -16,7 +16,7 @@ actions_temp = []
 done_temp = []
 info_temp = []
 while True:
-    env.render()
+    # env.render()
     last_state = copy.deepcopy(state)
     state, rew, done, truncated, info = env.step(None)
     observations_temp.append(last_state)
@@ -38,7 +38,7 @@ while True:
             done_temp = []
             info_temp = []
             poipoi +=1
-            if poipoi == 10:
+            if poipoi == 1024*32:
                 break
         state, info = env.reset()
 torch.save({'observations': observations, 'actions': actions, 'dones': dones, 'infos': info}, "expert_dataset.pt")

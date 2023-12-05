@@ -17,6 +17,17 @@ from imitation.data import rollout
 from imitation.algorithms.bc import BC
 from stable_baselines3.common.policies import ActorCriticPolicy
 from imitation.data.types import Transitions
+import numpy as np
+import gymnasium as gym
+from stable_baselines3 import PPO
+from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.ppo import MlpPolicy
+from imitation.algorithms.adversarial.gail import GAIL
+from imitation.data import rollout
+from imitation.data.wrappers import RolloutInfoWrapper
+from imitation.policies.serialize import load_policy
+from imitation.rewards.reward_nets import BasicRewardNet
+from imitation.util.networks import RunningNorm
 
 def build_occupancy_maps_batched(self, all_pedestrian_inputs):
     num_envs, num_humans, _ = all_pedestrian_inputs.size()
@@ -166,7 +177,7 @@ class CustomNetwork(BaseFeaturesExtractor):
         final_shapes = [arr.shape for arr in final_arrays]
         robot_rotated_input = torch.from_numpy(final_arrays[0]).to(device)
         pedestrian_input = torch.from_numpy(final_arrays[1]).to(device)
-        print(pedestrian_input.size())
+        # print(pedestrian_input.size())
         obstacle_input = torch.from_numpy(final_arrays[2]).to(device)
         robot_input = torch.from_numpy(final_arrays[3]).to(device)
 
@@ -221,76 +232,106 @@ def make_policy(env):
         features_extractor_class=CustomNetwork,
         features_extractor_kwargs={"features_dim": 100}
     )
-if __name__ == '__main__': 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    # #imitation
 
+
+if __name__ == '__main__':
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    # 専門家のデータセットをロード
     expert_dataset = torch.load("expert_dataset.pt")
     expert_obs, expert_act, expert_done, expert_info = expert_dataset['observations'], expert_dataset['actions'], expert_dataset['dones'], expert_dataset['infos']
 
-    env = gym.make('CrowdSim-v0')
+    # 環境の設定
+    env = make_vec_env('CrowdSim-v0', vec_env_cls=SubprocVecEnv, n_envs=4)
+
     policy_kwargs = dict(
         features_extractor_class=CustomNetwork,
         features_extractor_kwargs=dict(features_dim=100),
     )
-    model = PPO("MultiInputPolicy", env, policy_kwargs=policy_kwargs, verbose=1,  tensorboard_log="./ppo_tensorboard/")
-    empty_infos = [{} for _ in range(len(expert_obs))]
-    # Wra  p yo r data in the Transitions class
-    episodes = zip(expert_obs, expert_act, expert_done)
 
-    # 学習ループ
-    for episode_obs, episode_act, episode_done in episodes:
-        # next_obsを計算（最後の観測に対してはNoneを使用）
-        episode_next_obs = episode_obs[1:] + [np.zeros(114)]
-        # print(len(episode_obs))
-        for i in range(37):
-            print(len(episode_next_obs[i]))
-
-        # infosに対応する空のリストを作成
-        episode_infos = [{} for _ in range(len(episode_obs))]
-
-        # エピソードごとのTransitionsオブジェクトを作成
-        episode_transitions = Transitions(
-            obs=torch.tensor(np.array(episode_obs)).to(device),
-            acts=torch.tensor(np.array(episode_act)).to('cpu'),
-            next_obs=torch.tensor(np.array(episode_next_obs)).to(device),
-            dones=np.array(episode_done),
-            infos=episode_infos
-        )
-
-        # BCトレーナーのインスタンスを作成
-        bc_trainer = BC(
-            rng = np.random.default_rng(0),
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            policy=make_policy(env),
-            demonstrations=episode_transitions  # あなたの専門家データセット
-        )
-        # トレーニングを実行
-        bc_trainer.policy.to(device)
-        bc_trainer.train(n_epochs=100)
-    # 訓練の設定
-    timesteps = 1024*16
-    n_envs=2
-
-    # ロギングの設定
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    progress_bar = ProgressBarCallback(total_timesteps=timesteps/n_envs)
-
-    env = make_vec_env('CrowdSim-v0', vec_env_cls=SubprocVecEnv, n_envs=n_envs)
-    eval_env = gym.make('CrowdSim-v0')
-    policy_kwargs = dict(
-        features_extractor_class=CustomNetwork,
-        features_extractor_kwargs=dict(features_dim=100),
-    )
+    model = PPO("MultiInputPolicy", env, policy_kwargs=policy_kwargs, verbose=1, tensorboard_log="./ppo_tensorboard/")
     
+    # 学習ループ
+    # for episode_obs, episode_act, episode_done in zip(expert_obs, expert_act, expert_done):
+    #     # 次の観測を計算
+    #     episode_next_obs = episode_obs[1:] + [np.zeros(114)]
+
+    #     # エピソードごとのTransitionsオブジェクトを作成
+    #     episode_transitions = Transitions(
+    #         obs=torch.tensor(np.array(episode_obs)).to('cpu'),
+    #         acts=torch.tensor(np.array(episode_act)).to('cpu'),
+    #         next_obs=torch.tensor(np.array(episode_next_obs)).to('cpu'),
+    #         dones=np.array(episode_done),
+    #         infos=[{} for _ in range(len(episode_obs))]
+    #     )
+
+    #     # GAILトレーナーの設定
+    #     reward_net = BasicRewardNet(
+    #         observation_space=env.observation_space,
+    #         action_space=env.action_space,
+    #         normalize_input_layer=RunningNorm,
+    #     )
+
+    #     gail_trainer = GAIL(
+    #         demonstrations=episode_transitions,
+    #         demo_batch_size=37,
+    #         gen_replay_buffer_capacity=512,
+    #         n_disc_updates_per_round=8,
+    #         venv=env,
+    #         gen_algo=model,
+    #         reward_net=reward_net,
+    #     )
+
+    #     # GAILでのトレーニング実行
+    #     gail_trainer.policy.to(device)
+    #     gail_trainer.train(20000)
+    #     trained_model = gail_trainer.gen_algo
+    #     model = trained_model
+    all_obs = np.concatenate(expert_obs)
+    all_acts = np.concatenate(expert_act)
+    all_dones = np.concatenate(expert_done)
+    all_next_obs = np.concatenate([all_obs[1:], np.zeros_like(all_obs[0:1])])
+    all_transitions = Transitions(
+        obs=torch.tensor(all_obs).to('cpu'),
+        acts=torch.tensor(all_acts).to('cpu'),
+        next_obs=torch.tensor(all_next_obs).to('cpu'),
+        dones=all_dones,
+        infos=[{} for _ in range(len(all_obs))]
+    )
+    reward_net = BasicRewardNet(
+    observation_space=env.observation_space,
+    action_space=env.action_space,
+    normalize_input_layer=RunningNorm,
+    )
+
+    gail_trainer = GAIL(
+        demonstrations=all_transitions,
+        demo_batch_size=1024,
+        gen_replay_buffer_capacity=512,
+        n_disc_updates_per_round=8,
+        venv=env,
+        gen_algo=model,
+        reward_net=reward_net,
+        allow_variable_horizon=True,
+    )
+
+    gail_trainer.policy.to(device)
+    gail_trainer.train(200000)
+    trained_model = gail_trainer.gen_algo
+    model = trained_model
+    model.save("ppo_crowdnav_imitation")
+    print("imitation learning done")
+    # PPOでの追加トレーニング
+    timesteps = 1024 * 1024* 8
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    progress_bar = ProgressBarCallback(total_timesteps=timesteps / 4)  # n_envs=2 なので、timestepsを2で割る
+
     start_time = time.time()
-    model = PPO("MultiInputPolicy", env, policy_kwargs=policy_kwargs, verbose=1,  tensorboard_log="./ppo_tensorboard/")
     model.learn(total_timesteps=timesteps, tb_log_name="first_run", callback=progress_bar)
     end_time = time.time()
     model.save("ppo_crowdnav")
-    # 所要時間を計算
-    elapsed_time = end_time - start_time
 
-    # 所要時間をログに記録
+    # 所要時間の計算とログ記録
+    elapsed_time = end_time - start_time
     logging.info(f"Elapsed Time: {elapsed_time} seconds")
+

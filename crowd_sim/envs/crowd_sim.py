@@ -415,12 +415,9 @@ class CrowdSim(gym.Env):
                 ob += [self.robot.get_observable_state()]
             human_actions.append(human.act(ob))
         # for imitation learning
-        ob = [other_human.get_observable_state() for other_human in self.humans]
-        robot_action = self.robot.imact(ob)
-        action = robot_action
-        # action = np.array([1, math.pi])
-        # print("robot goal: ", self.robot.px, self.robot.py)
-        # collision detection
+        # ob = [other_human.get_observable_state() for other_human in self.humans]
+        # robot_action = self.robot.imact(ob)
+        # action = robot_action
         dmin = float('inf')
         collision = False
         info = None
@@ -463,7 +460,7 @@ class CrowdSim(gym.Env):
         reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < self.robot.radius
         truncated = False
         if self.global_time >= self.time_limit - 1:
-            reward = 0
+            reward = 0.0
             done = True
             info = {'event': 'timeout', 'action': np.array([action.v, action.r])}
             truncated = True
@@ -480,7 +477,7 @@ class CrowdSim(gym.Env):
             done = False
             info = {'event': 'danger', 'min_dist': dmin, 'action': np.array([action.v, action.r])}
         else:
-            reward = 0
+            reward = 0.0
             done = False
             info = {'event': 'nothing', 'action': np.array([action.v, action.r])}
         if update:
@@ -599,7 +596,7 @@ class CrowdSim(gym.Env):
                 obs = combined_array            
             elif self.robot.sensor == 'RGB':
                 raise NotImplementedError
-
+        rewards = rewards.astype(np.float32)
         return obs, reward, done, truncated, info
 
     def render(self, mode='human', output_file=None):
