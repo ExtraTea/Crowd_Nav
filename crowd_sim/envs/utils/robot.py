@@ -15,7 +15,7 @@ class Robot(Agent):
         action = self.policy.predict(state)
         return action
     
-    def imact(self, ob):
+    def imact(self, ob, bottom, top):
         def convert_velocity_to_rotation_and_magnitude(vx, vy):
             rotation = math.atan2(vy, vx)  # 角度をラジアンで計算
             velocity = math.sqrt(vx ** 2 + vy ** 2)  # 速度の大きさを計算
@@ -24,7 +24,7 @@ class Robot(Agent):
             raise AttributeError('Policy attribute has to be set!')
         state = JointState(self.get_full_state(), ob)
         pol = orca.ORCA()
-        action = pol.predict(state)
+        action = pol.predict(state, bottom, top)
         rotation, velocity = convert_velocity_to_rotation_and_magnitude(action.vx, action.vy)
         action = np.array([velocity, rotation])
         # action = np.array([1,math.pi/2])

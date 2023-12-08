@@ -64,7 +64,7 @@ class ORCA(Policy):
         self.kinematics = 'holonomic'
 
 
-    def predict(self, state):
+    def predict(self, state, bottom, top):
         """
         Create a rvo2 simulation at each time step and run one step
         Python-RVO2 API: https://github.com/sybrenstuvel/Python-RVO2/blob/master/src/rvo2.pyx
@@ -94,6 +94,19 @@ class ORCA(Policy):
             for i, human_state in enumerate(state.human_states):
                 id = self.sim.add_agent(Vector2(human_state.px, human_state.py), 0.3 + 0.11 + 0.15, Vector2(human_state.vx, human_state.vy), human_state.face_orientation)
                 # self.sim.agents_[id].max_speed_ = self.max_speed
+            
+            # walls
+            # 左の壁
+            self.sim.add_obstacle([Vector2(-30, top), Vector2(-29.9, top), Vector2(-29.9, bottom), Vector2(-30, bottom)])
+            # 右の壁
+            self.sim.add_obstacle([Vector2(29.9, top), Vector2(30, top), Vector2(30, -bottom), Vector2(29.9, bottom)])
+            # 上の壁
+            self.sim.add_obstacle([Vector2(-30, top), Vector2(30, top), Vector2(30, top+0.1), Vector2(-30, top+0.1)])
+            # 下の壁
+            self.sim.add_obstacle([Vector2(-30, bottom-0.1), Vector2(30, bottom-0.1), Vector2(30, bottom), Vector2(-30, bottom)])
+
+            self.sim.process_obstacles()
+
 
         # Set the preferred velocity to be a vector of unit magnitude (speed) in the direction of the goal.
         velocity = np.array((self_state.gx - self_state.px, self_state.gy - self_state.py))

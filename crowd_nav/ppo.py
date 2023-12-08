@@ -242,7 +242,7 @@ if __name__ == '__main__':
     expert_obs, expert_act, expert_done, expert_info = expert_dataset['observations'], expert_dataset['actions'], expert_dataset['dones'], expert_dataset['infos']
 
     # 環境の設定
-    env = make_vec_env('CrowdSim-v0', vec_env_cls=SubprocVecEnv, n_envs=4)
+    env = make_vec_env('CrowdSim-v0', vec_env_cls=SubprocVecEnv, n_envs=8)
 
     policy_kwargs = dict(
         features_extractor_class=CustomNetwork,
@@ -276,20 +276,21 @@ if __name__ == '__main__':
         venv=env,
         gen_algo=model,
         reward_net=reward_net,
-        allow_variable_horizon=True,
+        # allow_variable_horizon=True,
     )
 
     gail_trainer.policy.to(device)
-    gail_trainer.train(200000)
+    gail_trainer.train(20000)
+
     trained_model = gail_trainer.gen_algo
     model = trained_model
     model.save("ppo_crowdnav_imitation")
     print("imitation learning done")
     # PPOでの追加トレーニング
-    timesteps = 1024 * 1024 * 8
+    timesteps = 1024 * 32
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    progress_bar = ProgressBarCallback(total_timesteps=timesteps / 4)  # n_envs=2 なので、timestepsを2で割る
-
+    progress_bar = ProgressBarCallback(total_timesteps=timesteps / 4) 
+    
     start_time = time.time()
     model.learn(total_timesteps=timesteps, tb_log_name="first_run", callback=progress_bar)
     end_time = time.time()

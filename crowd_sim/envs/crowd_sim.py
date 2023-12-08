@@ -17,6 +17,7 @@ from crowd_nav.policy.sarl import SARL
 from crowd_sim.envs.utils.action import ActionRot, ActionXY
 from time import sleep
 from matplotlib import pyplot as plt
+import random as rand
 class CrowdSim(gym.Env):
     metadata = {
         'render_modes': ['human', 'rgb_array'],
@@ -72,10 +73,14 @@ class CrowdSim(gym.Env):
         high = 1000 * np.ones([2, ])
         self.action_space = gym.spaces.Box(-high, high, dtype=np.float64)
         self.set_robot()
-
+        def sample_truncated_normal(mean, lower, upper):
+            while True:
+                sample = np.random.normal(mean, 1)  # 標準偏差は1と仮定
+                if lower <= sample <= upper:
+                    return sample
         # for wall obstacle
-        self.bottom = -3
-        self.top = 3
+        self.bottom = rand.uniform(-5000, 5000)
+        self.top = self.bottom + sample_truncated_normal(5, 3, 16)
         self.endline = 30
         self.walls = np.array([
             [-self.endline, self.bottom, -self.endline, self.top],  # Left wall
@@ -129,7 +134,7 @@ class CrowdSim(gym.Env):
         self.robot.set_policy(SARL())
         
 
-    def generate_random_human_position(self, human_num, rule):
+    def generate_random_human_position(self, human_num, rule='wall_crossing'):
         """
         Generate human position according to certain rule
         Rule square_crossing: generate start/goal position at two sides of y-axis
@@ -147,7 +152,11 @@ class CrowdSim(gym.Env):
         elif rule == 'circle_crossing':
             self.humans = []
             for i in range(human_num):
-                self.humans.append(self.generate_circle_crossing_human())
+                self.humans.append(self.generate_wall_crossing_human())
+        elif rule == 'wall_crossing':
+            self.humans = []
+            for i in range(human_num):
+                self.humans.append(self.generate_wall_crossing_human())
         elif rule == 'mixed':
             # mix different raining simulation with certain distribution
             static_human_num = {0: 0.05, 1: 0.2, 2: 0.2, 3: 0.3, 4: 0.1, 5: 0.15}
@@ -222,6 +231,43 @@ class CrowdSim(gym.Env):
                 break
         human.set(px, py, -px, -py, 0, 0, 0)
         return human
+    
+    import numpy as np
+
+    def generate_wall_crossing_human(self):
+        human = Human(self.config, 'humans')
+        if self.randomize_attributes:
+            human.sample_random_attributes()
+        
+        while True:
+            # 出発地点と目的地の範囲設定
+            if np.random.random() < 0.5:
+                # -6 < x < -3 から出発し、3 < x < 6 にゴール
+                px = np.random.uniform(-7, -3)
+                gx = np.random.uniform(3, 7)
+            else:
+                # 3 < x < 6 から出発し、-6 < x < -3 にゴール
+                px = np.random.uniform(3, 7)
+                gx = np.random.uniform(-7, -3)
+
+            # -3 < y < 3 の範囲でランダムに選択
+            py = np.random.uniform(self.bottom, self.top)
+            gy = np.random.uniform(self.bottom, self.top)
+
+            collide = False
+            for agent in [self.robot] + self.humans:
+                min_dist = human.radius + agent.radius + self.discomfort_dist
+                if norm((px - agent.px, py - agent.py)) < min_dist or \
+                        norm((gx - agent.gx, gy - agent.gy)) < min_dist:
+                    collide = True
+                    break
+
+            if not collide:
+                break
+
+        human.set(px, py, gx, gy, 0, 0, 0)
+        return human
+
 
     def generate_square_crossing_human(self):
         human = Human(self.config, 'humans')
@@ -288,6 +334,31 @@ class CrowdSim(gym.Env):
         return self.human_times
 
     def reset(self, phase='train', test_case=None, options=None, seed=None):
+        import numpy as np
+        self.bottom = rand.uniform(-5, 5)
+        self.top = self.bottom + rand.uniform(3,9)
+        def set_robot_position(self):
+            # ロボットの出発地点と目的地の範囲設定
+            if np.random.random() < 0.5:
+                # -6 < x < -3 から出発し、3 < x < 6 にゴール
+                px = np.random.uniform(-8, -3)
+                gx = np.random.uniform(3, 8)
+            else:
+                # 3 < x < 6 から出発し、-6 < x < -3 にゴール
+                px = np.random.uniform(3, 8)
+                gx = np.random.uniform(-8, -3)
+
+            # -3 < y < 3 の範囲でランダムに選択
+            py = np.random.uniform(self.bottom + self.robot.radius, self.top - self.robot.radius)
+            gy = np.random.uniform(self.bottom + self.robot.radius, self.top - self.robot.radius)
+
+            # ロボットの初期速度と向き
+            vx = 0
+            vy = 0
+            theta = np.pi / 2
+
+            self.robot.set(px, py, gx, gy, vx, vy, theta)
+
         """
         Set px, py, gx, gy, vx, vy, theta for robot and humans
         :return:
@@ -312,7 +383,8 @@ class CrowdSim(gym.Env):
         else:
             counter_offset = {'train': self.case_capacity['val'] + self.case_capacity['test'],
                               'val': 0, 'test': self.case_capacity['val']}
-            self.robot.set(0, -self.circle_radius, 2, self.circle_radius, 0, 0, np.pi / 2)
+            # self.robot.set(0, -self.circle_radius, 2, self.circle_radius, 0, 0, np.pi / 2)
+            set_robot_position(self)
             if self.case_counter[phase] >= 0:
                 # np.random.seed(counter_offset[phase] + self.case_counter[phase])
                 if phase in ['train', 'val']:
@@ -413,11 +485,13 @@ class CrowdSim(gym.Env):
             # if self.robot.visible:
             if True:
                 ob += [self.robot.get_observable_state()]
-            human_actions.append(human.act(ob))
-        # for imitation learning
-        # ob = [other_human.get_observable_state() for other_human in self.humans]
-        # robot_action = self.robot.imact(ob)
-        # action = robot_action
+            human_actions.append(human.act(ob, self.bottom, self.top))
+        # # for imitation learning
+        ob = [other_human.get_observable_state() for other_human in self.humans]
+        robot_action = self.robot.imact(ob, self.bottom, self.top)
+        action = robot_action
+
+
         dmin = float('inf')
         collision = False
         info = None
@@ -443,6 +517,24 @@ class CrowdSim(gym.Env):
                 break
             elif closest_dist < dmin:
                 dmin = closest_dist
+        # collision against wall
+        px, py = self.robot.px, self.robot.py
+
+        # 左の壁に衝突しているか判定
+        if px < -30 + self.robot.radius:
+            collision = True
+
+        # 右の壁に衝突しているか判定
+        if px > 30 - self.robot.radius:
+            collision = True
+
+        # 上の壁に衝突しているか判定
+        if py > self.top - self.robot.radius:
+            collision = True
+
+        # 下の壁に衝突しているか判定
+        if py < self.bottom + self.robot.radius:
+            collision = True
 
         # collision detection between humans
         human_num = len(self.humans)
@@ -600,7 +692,7 @@ class CrowdSim(gym.Env):
         return obs, reward, done, truncated, info
 
     def render(self, mode='human', output_file=None):
-        from matplotlib import animation
+        from matplotlib import animation, patches
         import matplotlib.pyplot as plt
         plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
 
@@ -612,16 +704,39 @@ class CrowdSim(gym.Env):
         arrow_color = 'red'
         arrow_style = patches.ArrowStyle("->", head_length=4, head_width=2)
 
+        wall_color = 'gray'  # 壁の色
+
         if mode == 'human':
             self.ax.clear()
-            self.ax.set_xlim(-6, 6)
-            self.ax.set_ylim(-6, 6)
+            self.ax.set_xlim(-8, 8)
+            self.ax.set_ylim(self.bottom, self.top)
+
+            # 壁の描画
+            # 左の壁
+            left_wall = patches.Rectangle((-self.endline, self.bottom), 0.1, self.top - self.bottom, edgecolor=wall_color, facecolor=wall_color)
+            self.ax.add_patch(left_wall)
+
+            # 右の壁
+            right_wall = patches.Rectangle((self.endline - 0.1, self.bottom), 0.1, self.top - self.bottom, edgecolor=wall_color, facecolor=wall_color)
+            self.ax.add_patch(right_wall)
+
+            # 上の壁
+            top_wall = patches.Rectangle((-self.endline, self.top - 0.1), 2 * self.endline, 0.1, edgecolor=wall_color, facecolor=wall_color)
+            self.ax.add_patch(top_wall)
+
+            # 下の壁
+            bottom_wall = patches.Rectangle((-self.endline, self.bottom), 2 * self.endline, 0.1, edgecolor=wall_color, facecolor=wall_color)
+            self.ax.add_patch(bottom_wall)
+
             for human in self.humans:
                 human_circle = plt.Circle(human.get_position(), human.radius, fill=False, color='b')
                 self.ax.add_artist(human_circle)
             self.ax.add_artist(plt.Circle(self.robot.get_position(), self.robot.radius, fill=True, color='r'))
+
             plt.draw()
             plt.pause(0.001)
+
+
 
         
         elif mode == 'traj':
