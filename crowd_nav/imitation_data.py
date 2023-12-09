@@ -72,17 +72,32 @@ def run_environment(executions):
             actions_temp.append(info['action'])
             done_temp.append(done)
             info_temp.append(info['event'])
-            if done and info['event'] == 'reaching_goal':
+
+            if done:
+                
+                # ステップ数が50未満の場合、データを埋める
+                if len(done_temp) < 100:
+                    remaining_steps = 100 - len(done_temp)
+                    first_observation = observations_temp[0]
+                    first_info = info_temp[0]
+                    # 配列の最初にデータを埋める
+                    observations_temp = [first_observation] * remaining_steps + observations_temp
+                    actions_temp = [np.array([0, 0])] * remaining_steps + actions_temp
+                    done_temp = [False] * remaining_steps + done_temp
+                    info_temp = [first_info] * remaining_steps + info_temp
+                # print(len(done_temp))
                 all_observations.append(observations_temp)
                 all_actions.append(actions_temp)
                 all_dones.append(done_temp)
                 all_infos.append(info_temp)
 
+    # ここで結果を返すか、処理を続ける
     return all_observations, all_actions, all_dones, all_infos
 
+
 def main():
-    number_of_processes = 16
-    total_executions = 1024 * 4
+    number_of_processes = 32
+    total_executions = 1024 * 16
 
     executions_per_process = total_executions // number_of_processes
     extra_executions = total_executions % number_of_processes
@@ -99,6 +114,7 @@ def main():
         ]
         for future in concurrent.futures.as_completed(futures):
             observations, actions, dones, infos = future.result()
+            
             all_observations.extend(observations)
             all_actions.extend(actions)
             all_dones.extend(dones)

@@ -124,7 +124,7 @@ class CrowdSim(gym.Env):
     def set_robot(self):
         from crowd_sim.envs.utils.robot import Robot
         import configparser
-        config_file_path = r'/home/dai/sotsuron/original_crowdnav/CrowdNav/crowd_nav/configs/env.config'
+        config_file_path = r'/home/dai/Crowd_Nav/crowd_nav/configs/env.config'
         
         # configparserのインスタンスを作成し、設定ファイルを読み込む
         env_config = configparser.RawConfigParser()
