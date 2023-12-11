@@ -254,6 +254,10 @@ if __name__ == '__main__':
     all_obs = np.concatenate(expert_obs)
     all_acts = np.concatenate(expert_act)
     all_dones = np.concatenate(expert_done)
+    # print(all_obs.shape)
+    # print(all_acts.shape)
+    # print(all_dones.shape)
+    # print(all_dones)
     all_next_obs = np.concatenate([all_obs[1:], np.zeros_like(all_obs[0:1])])
     all_transitions = Transitions(
         obs=torch.tensor(all_obs).to('cpu'),
@@ -276,25 +280,30 @@ if __name__ == '__main__':
         venv=env,
         gen_algo=model,
         reward_net=reward_net,
-        # allow_variable_horizon=True,
+        allow_variable_horizon=True,
     )
-
-    gail_trainer.policy.to(device)
-    gail_trainer.train(20000)
+    for i in range(100):
+        gail_trainer.policy.to(device)
+        gail_trainer.train(20000)
+        trained_model = gail_trainer.gen_algo
+        model = trained_model
+        model.save("ppo_crowdnav_imitation")
 
     trained_model = gail_trainer.gen_algo
     model = trained_model
     model.save("ppo_crowdnav_imitation")
     print("imitation learning done")
     # PPOでの追加トレーニング
-    timesteps = 1024 * 32
+    timesteps = 1024 * 1024 * 16 / 100
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     progress_bar = ProgressBarCallback(total_timesteps=timesteps / 4) 
     
     start_time = time.time()
-    model.learn(total_timesteps=timesteps, tb_log_name="first_run", callback=progress_bar)
+    for i in range(100):
+        model.learn(total_timesteps=int(timesteps), tb_log_name="first_run", callback=progress_bar)
+        model.save("ppo_crowdnav")
     end_time = time.time()
-    model.save("ppo_crowdnav")
+    
 
     # 所要時間の計算とログ記録
     elapsed_time = end_time - start_time
