@@ -30,7 +30,7 @@ class Agent:
         self.new_velocity_ = Vector2()
         self.is_robot = False
         self.face_orientation_ = Vector2(1,1)
-        self.angle_of_vision = 180.0 # need to be fixed later                                                                                    
+        self.angle_of_vision = 90.0 # need to be fixed later                                                                                    
 
     def compute_neighbors(self):
         """
@@ -374,10 +374,10 @@ class Agent:
         prev_velocity = self.velocity_
         self.velocity_ = self.new_velocity_
         self.position_ += self.velocity_ * self.simulator_.time_step_
-        if self.velocity_.x ** 2 + self.velocity_.y ** 2 < 1:
+        if self.velocity_.x ** 2 + self.velocity_.y ** 2 < 0:
             self.face_orientation_ = self.face_orientation_ 
         else:
-            self.face_orientation_ = (prev_velocity + self.face_orientation_) * 0.5
+            self.face_orientation_ = (prev_velocity * 0.1 + self.face_orientation_*0.9)
 
     def linear_program1(self, lines, lineNo, radius, optVelocity, directionOpt):
         """

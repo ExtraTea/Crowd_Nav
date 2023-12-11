@@ -129,11 +129,36 @@ class Agent(object):
         self.check_validity(action)
         pos = self.compute_position(action, self.time_step)
         self.px, self.py = pos
+
         if self.kinematics == 'holonomic':
             self.vx = action.vx
             self.vy = action.vy
+
+            # 新しい向きベクトルを計算
+            new_orientation = Vector2(action.vx, action.vy)
+
+            # 現在の向きベクトルと新しい向きベクトルとの間のドット積を計算
+            dot_product = self.face_orientation.x * new_orientation.x + self.face_orientation.y * new_orientation.y
+
+            # 両ベクトルの大きさ（ノルム）を計算
+            current_norm = np.sqrt(self.face_orientation.x ** 2 + self.face_orientation.y ** 2)
+            new_norm = np.sqrt(new_orientation.x ** 2 + new_orientation.y ** 2)
+
+            # 角度を計算
+            if current_norm * new_norm != 0:  # ゼロ割を防ぐ
+                angle = np.arccos(np.clip(dot_product / (current_norm * new_norm),-1.0, 1.0))
+            else:
+                angle = np.pi  # 180度：方向が不明な場合
+
+            # 角度に基づいて補間係数を調整
+            # 角度が小さいほど新しい方向に迅速に追従し、角度が大きいほど変更を抑制する
+            lerp_factor = np.clip((1 - angle / np.pi), 0.05, 0.95)
+
+            # face_orientationを更新
+            self.face_orientation = new_orientation * lerp_factor + self.face_orientation * (1 - lerp_factor)
+
         else:
-            self.theta = (self.theta + action.r) % (2 * np.pi)
+            self.theta = (self.theta +action.r) % (2 * np.pi)
             
             self.vx = action.v * np.cos(action.r)
             self.vy = action.v * np.sin(action.r)

@@ -5,13 +5,14 @@ from matplotlib import pyplot as plt
 import time
 # 保存したモデルのファイルパス
 model_path = "ppo_crowdnav.zip"
-model_path = "ppo_crowdnav_imitation.zip"
+# model_path = "ppo_crowdnav_imitation.zip"
 
 # モデルをロード
 model = PPO.load(model_path)
 env = gym.make('CrowdSim-v0', render_mode='human')
 state, info  = env.reset()
 done = False
+rews = 0
 while True:
     
     env.render()

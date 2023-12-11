@@ -80,7 +80,7 @@ class CrowdSim(gym.Env):
                     return sample
         # for wall obstacle
         self.bottom = rand.uniform(-5000, 5000)
-        self.top = self.bottom + sample_truncated_normal(5, 3, 16)
+        self.top = self.bottom + sample_truncated_normal(7, 5, 16)
         self.endline = 30
         self.walls = np.array([
             [-self.endline, self.bottom, -self.endline, self.top],  # Left wall
@@ -231,8 +231,6 @@ class CrowdSim(gym.Env):
                 break
         human.set(px, py, -px, -py, 0, 0, 0)
         return human
-    
-    import numpy as np
 
     def generate_wall_crossing_human(self):
         human = Human(self.config, 'humans')
@@ -493,6 +491,7 @@ class CrowdSim(gym.Env):
 
 
         dmin = float('inf')
+        dmin=[]
         collision = False
         info = None
         for i, human in enumerate(self.humans):
@@ -511,12 +510,26 @@ class CrowdSim(gym.Env):
             ey = py + vy * self.time_step
             # closest distance between boundaries of two agents
             closest_dist = point_to_segment_dist(px, py, ex, ey, 0, 0) - human.radius - self.robot.radius
+
+            # 人間の視線方向とロボットの方向との間の角度を計算
+            gaze_direction = np.array([human.face_orientation.x, human.face_orientation.y])
+            robot_direction = np.array([px, py])
+            dot_product = np.dot(gaze_direction, robot_direction)
+            norm_product = np.linalg.norm(gaze_direction) * np.linalg.norm(robot_direction)
+            
+            # 避けるべきゼロ割を防ぐ
+            if norm_product != 0:
+                angle = np.arccos(dot_product / norm_product)
+            else:
+                angle = np.pi  # 180度：ロボットは視界内にいないと仮定
             if closest_dist < 0:
                 collision = True
                 # logging.debug("Collision: distance between robot and p{} is {:.2E}".format(i, closest_dist))
                 break
-            elif closest_dist < dmin:
-                dmin = closest_dist
+            else:
+                if abs(angle) <= 90:
+                    dmin.append(closest_dist)
+
         # collision against wall
         px, py = self.robot.px, self.robot.py
 
@@ -564,10 +577,18 @@ class CrowdSim(gym.Env):
             reward = self.success_reward
             done = True
             info = {'event': 'reaching_goal', 'action': np.array([action.v, action.r])}
-        elif dmin < self.discomfort_dist:
-            reward = (dmin - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step
-            done = False
-            info = {'event': 'danger', 'min_dist': dmin, 'action': np.array([action.v, action.r])}
+        elif any(dist < self.discomfort_dist for dist in dmin):
+            # self.discomfort_distより小さいすべての距離に対して報酬を計算
+            rewards = [(dist - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step for dist in dmin if dist < self.discomfort_dist]
+
+            # 複数の報酬がある場合は、それらを合計する
+            total_reward = sum(rewards) if rewards else 0
+
+            # 何かしらの距離がself.discomfort_distより小さい場合のみ、イベントとして記録
+            if rewards:
+                done = False
+                info = {'event': 'danger', 'min_dists': [dist for dist in dmin if dist < self.discomfort_dist], 'action': np.array([action.v, action.r])}
+                reward = total_reward
         else:
             reward = 0.0
             done = False
@@ -709,7 +730,7 @@ class CrowdSim(gym.Env):
         if mode == 'human':
             self.ax.clear()
             self.ax.set_xlim(-8, 8)
-            self.ax.set_ylim(self.bottom, self.top)
+            self.ax.set_ylim(self.bottom-2, self.bottom+14)
 
             # 壁の描画
             # 左の壁
@@ -731,8 +752,18 @@ class CrowdSim(gym.Env):
             for human in self.humans:
                 human_circle = plt.Circle(human.get_position(), human.radius, fill=False, color='b')
                 self.ax.add_artist(human_circle)
-            self.ax.add_artist(plt.Circle(self.robot.get_position(), self.robot.radius, fill=True, color='r'))
+                # Determine the direction of the human's gaze
+                gaze_direction_x = human.face_orientation.x
+                gaze_direction_y = human.face_orientation.y
+                # print(gaze_direction_x, gaze_direction_y)
+                # Calculate the end point of the arrow based on the gaze direction
+                arrow_end_x = human.get_position()[0] + gaze_direction_x
+                arrow_end_y = human.get_position()[1] + gaze_direction_y
 
+                # Draw an arrow to represent the gaze direction
+                gaze_arrow = patches.FancyArrow(human.get_position()[0], human.get_position()[1], arrow_end_x - human.get_position()[0], arrow_end_y - human.get_position()[1], width=0.1, head_width=0.3, head_length=0.3, color=arrow_color)
+                self.ax.add_patch(gaze_arrow)
+            self.ax.add_artist(plt.Circle(self.robot.get_position(), self.robot.radius, fill=True, color='r'))
             plt.draw()
             plt.pause(0.001)
 

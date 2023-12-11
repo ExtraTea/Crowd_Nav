@@ -140,7 +140,7 @@ class CustomNetwork(BaseFeaturesExtractor):
     def forward(self, obs):
         hardcoded_original_shapes = [
             (6,),       # array1の形状
-            (5, 6),     # array2の形状
+            (10, 6),     # array2の形状(human_num, 6)
             (72,),      # array3の形状
             (1, 6),     # array4の形状
         ]
