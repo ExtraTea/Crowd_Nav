@@ -124,7 +124,7 @@ class CrowdSim(gym.Env):
     def set_robot(self):
         from crowd_sim.envs.utils.robot import Robot
         import configparser
-        config_file_path = r'/home/dai/Crowd_Nav/crowd_nav/configs/env.config'
+        config_file_path = r'/home/dai/sotsuron/original_crowdnav/CrowdNav/crowd_nav/configs/env.config'
         
         # configparserのインスタンスを作成し、設定ファイルを読み込む
         env_config = configparser.RawConfigParser()
@@ -485,9 +485,9 @@ class CrowdSim(gym.Env):
                 ob += [self.robot.get_observable_state()]
             human_actions.append(human.act(ob, self.bottom, self.top))
         # # for imitation learning
-        ob = [other_human.get_observable_state() for other_human in self.humans]
-        robot_action = self.robot.imact(ob, self.bottom, self.top)
-        action = robot_action
+        # ob = [other_human.get_observable_state() for other_human in self.humans]
+        # robot_action = self.robot.imact(ob, self.bottom, self.top)
+        # action = robot_action
 
 
         dmin = float('inf')
