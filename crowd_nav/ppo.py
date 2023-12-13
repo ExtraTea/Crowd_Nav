@@ -262,7 +262,7 @@ if __name__ == '__main__':
 
     gail_trainer = GAIL(
         demonstrations=all_transitions,
-        demo_batch_size=1024,
+        demo_batch_size=2048,
         gen_replay_buffer_capacity=512,
         n_disc_updates_per_round=8,
         venv=env,
@@ -270,12 +270,22 @@ if __name__ == '__main__':
         reward_net=reward_net,
         allow_variable_horizon=True,
     )
-    for i in range(100):
-        gail_trainer.policy.to(device)
-        gail_trainer.train(20000)
-        trained_model = gail_trainer.gen_algo
-        model = trained_model
-        model.save("ppo_crowdnav_imitation")
+    timesteps = 1024 * 1024 * 16
+    checkpoint_callback = CheckpointCallback(
+                        save_freq = max(1024*128 // 8, 1),
+                        save_path="./logs/",
+                        name_prefix="rl_model",
+                        save_replay_buffer=True,
+                        save_vecnormalize=True,
+                        )
+    progress_bar_callback = ProgressBarCallback(timesteps=timesteps / 8) 
+    callbacks = [checkpoint_callback, progress_bar_callback]
+
+    gail_trainer.policy.to(device)
+    gail_trainer.train(timesteps, callbacks=callbacks)
+    trained_model = gail_trainer.gen_algo
+    model = trained_model
+    model.save("ppo_crowdnav_imitation")
 
     trained_model = gail_trainer.gen_algo
     model = trained_model
