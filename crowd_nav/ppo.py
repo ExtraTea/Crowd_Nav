@@ -21,6 +21,7 @@ import numpy as np
 import gymnasium as gym
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.ppo import MlpPolicy
+from stable_baselines3.common.callbacks import CheckpointCallback
 from imitation.algorithms.adversarial.gail import GAIL
 from imitation.data import rollout
 from imitation.data.wrappers import RolloutInfoWrapper
@@ -224,74 +225,85 @@ class ProgressBarCallback(BaseCallback):
 if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    # # 専門家のデータセットをロード
-    # expert_dataset = torch.load("expert_dataset.pt")
-    # expert_obs, expert_act, expert_done, expert_info = expert_dataset['observations'], expert_dataset['actions'], expert_dataset['dones'], expert_dataset['infos']
+    # 専門家のデータセットをロード
+    expert_dataset = torch.load("expert_dataset.pt")
+    expert_obs, expert_act, expert_done, expert_info = expert_dataset['observations'], expert_dataset['actions'], expert_dataset['dones'], expert_dataset['infos']
 
-    # # 環境の設定
-    # env = make_vec_env('CrowdSim-v0', vec_env_cls=SubprocVecEnv, n_envs=8)
-
-    # policy_kwargs = dict(
-    #     features_extractor_class=CustomNetwork,
-    #     features_extractor_kwargs=dict(features_dim=100),
-    # )
-
-    # model = PPO("MultiInputPolicy", env, policy_kwargs=policy_kwargs, verbose=1, tensorboard_log="./ppo_tensorboard/")
-    
-    # all_obs = np.concatenate(expert_obs)
-    # all_acts = np.concatenate(expert_act)
-    # all_dones = np.concatenate(expert_done)
-    # # print(all_obs.shape)
-    # # print(all_acts.shape)
-    # # print(all_dones.shape)
-    # # print(all_dones)
-    # all_next_obs = np.concatenate([all_obs[1:], np.zeros_like(all_obs[0:1])])
-    # all_transitions = Transitions(
-    #     obs=torch.tensor(all_obs).to('cpu'),
-    #     acts=torch.tensor(all_acts).to('cpu'),
-    #     next_obs=torch.tensor(all_next_obs).to('cpu'),
-    #     dones=all_dones,
-    #     infos=[{} for _ in range(len(all_obs))]
-    # )
-    # reward_net = BasicRewardNet(
-    # observation_space=env.observation_space,
-    # action_space=env.action_space,
-    # normalize_input_layer=RunningNorm,
-    # )
-
-    # gail_trainer = GAIL(
-    #     demonstrations=all_transitions,
-    #     demo_batch_size=1024,
-    #     gen_replay_buffer_capacity=512,
-    #     n_disc_updates_per_round=8,
-    #     venv=env,
-    #     gen_algo=model,
-    #     reward_net=reward_net,
-    #     allow_variable_horizon=True,
-    # )
-    # for i in range(100):
-    #     gail_trainer.policy.to(device)
-    #     gail_trainer.train(20000)
-    #     trained_model = gail_trainer.gen_algo
-    #     model = trained_model
-    #     model.save("ppo_crowdnav_imitation")
-
-    # trained_model = gail_trainer.gen_algo
-    # model = trained_model
-    # model.save("ppo_crowdnav_imitation")
-    # print("imitation learning done")
-    # PPOでの追加トレーニング
+    # 環境の設定
     env = make_vec_env('CrowdSim-v0', vec_env_cls=SubprocVecEnv, n_envs=8)
-    model = PPO.load("/home/dai/sotsuron/original_crowdnav/CrowdNav/crowd_nav/ppo_crowdnav_imitation (1).zip", env=env)
+
+    policy_kwargs = dict(
+        features_extractor_class=CustomNetwork,
+        features_extractor_kwargs=dict(features_dim=100),
+    )
+
+    model = PPO("MultiInputPolicy", env, policy_kwargs=policy_kwargs, verbose=1, tensorboard_log="./ppo_tensorboard/")
     
-    timesteps = 1024 * 1024 * 16 / 100
+    all_obs = np.concatenate(expert_obs)
+    all_acts = np.concatenate(expert_act)
+    all_dones = np.concatenate(expert_done)
+    # print(all_obs.shape)
+    # print(all_acts.shape)
+    # print(all_dones.shape)
+    # print(all_dones)
+    all_next_obs = np.concatenate([all_obs[1:], np.zeros_like(all_obs[0:1])])
+    all_transitions = Transitions(
+        obs=torch.tensor(all_obs).to('cpu'),
+        acts=torch.tensor(all_acts).to('cpu'),
+        next_obs=torch.tensor(all_next_obs).to('cpu'),
+        dones=all_dones,
+        infos=[{} for _ in range(len(all_obs))]
+    )
+    reward_net = BasicRewardNet(
+    observation_space=env.observation_space,
+    action_space=env.action_space,
+    normalize_input_layer=RunningNorm,
+    )
+
+    gail_trainer = GAIL(
+        demonstrations=all_transitions,
+        demo_batch_size=1024,
+        gen_replay_buffer_capacity=512,
+        n_disc_updates_per_round=8,
+        venv=env,
+        gen_algo=model,
+        reward_net=reward_net,
+        allow_variable_horizon=True,
+    )
+    for i in range(100):
+        gail_trainer.policy.to(device)
+        gail_trainer.train(20000)
+        trained_model = gail_trainer.gen_algo
+        model = trained_model
+        model.save("ppo_crowdnav_imitation")
+
+    trained_model = gail_trainer.gen_algo
+    model = trained_model
+    model.save("ppo_crowdnav_imitation")
+    print("imitation learning done")
+    # PPOでの追加トレーニング
+    
+
+    env = make_vec_env('CrowdSim-v0', vec_env_cls=SubprocVecEnv, n_envs=8)
+    model = PPO.load("ppo_crowdnav_imitation.zip", env=env)
+    
+    timesteps = 1024 * 1024 * 16
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    progress_bar = ProgressBarCallback(total_timesteps=timesteps / 4) 
+    checkpoint_callback = CheckpointCallback(
+                        save_freq = max(1024*128 // 8, 1),
+                        save_path="./logs/",
+                        name_prefix="rl_model",
+                        save_replay_buffer=True,
+                        save_vecnormalize=True,
+                        )
+    progress_bar_callback = ProgressBarCallback(total_timesteps=timesteps / 8) 
+    callbacks = [checkpoint_callback, progress_bar_callback]
     
     start_time = time.time()
-    for i in range(100):
-        model.learn(total_timesteps=int(timesteps), tb_log_name="first_run", callback=progress_bar)
-        model.save("ppo_crowdnav")
+    model.learn(total_timesteps=int(timesteps), tb_log_name="first_run", callback=callbacks)
+    model.save("ppo_crowdnav")
+
+        
     end_time = time.time()
     
 

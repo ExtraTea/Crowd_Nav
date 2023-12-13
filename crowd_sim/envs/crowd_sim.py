@@ -18,6 +18,11 @@ from crowd_sim.envs.utils.action import ActionRot, ActionXY
 from time import sleep
 from matplotlib import pyplot as plt
 import random as rand
+def sample_truncated_normal(mean, lower, upper):
+            while True:
+                sample = np.random.normal(mean, 1)  # 標準偏差は1と仮定
+                if lower <= sample <= upper:
+                    return sample
 class CrowdSim(gym.Env):
     metadata = {
         'render_modes': ['human', 'rgb_array'],
@@ -333,8 +338,8 @@ class CrowdSim(gym.Env):
 
     def reset(self, phase='train', test_case=None, options=None, seed=None):
         import numpy as np
-        self.bottom = rand.uniform(-5, 5)
-        self.top = self.bottom + rand.uniform(3,9)
+        self.bottom = rand.uniform(-1000, 1000)
+        self.top = self.bottom + sample_truncated_normal(7, 5, 16)
         def set_robot_position(self):
             # ロボットの出発地点と目的地の範囲設定
             if np.random.random() < 0.5:
@@ -485,9 +490,9 @@ class CrowdSim(gym.Env):
                 ob += [self.robot.get_observable_state()]
             human_actions.append(human.act(ob, self.bottom, self.top))
         # # for imitation learning
-        # ob = [other_human.get_observable_state() for other_human in self.humans]
-        # robot_action = self.robot.imact(ob, self.bottom, self.top)
-        # action = robot_action
+        ob = [other_human.get_observable_state() for other_human in self.humans]
+        robot_action = self.robot.imact(ob, self.bottom, self.top)
+        action = robot_action
 
 
         dmin = float('inf')
