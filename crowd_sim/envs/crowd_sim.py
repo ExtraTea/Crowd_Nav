@@ -76,7 +76,11 @@ class CrowdSim(gym.Env):
         # self.observation_space = gym.spaces.Dict(d)
         self.observation_space = gym.spaces.Box(low=-1000, high=1000, shape=(114, ), dtype=np.float64)
         high = 1000 * np.ones([2, ])
-        self.action_space = gym.spaces.Box(-high, high, dtype=np.float64)
+        # self.action_space = gym.spaces.Box(-high, high, dtype=np.float64)
+        # space1 = gym.spaces.Discrete(100)
+        # space2 = gym.spaces.Discrete(629)
+        # self.action_space = gym.spaces.Tuple((space1, space2))
+        self.action_space = gym.spaces.MultiDiscrete([101, 629])
         self.set_robot()
         def sample_truncated_normal(mean, lower, upper):
             while True:
@@ -338,7 +342,7 @@ class CrowdSim(gym.Env):
 
     def reset(self, phase='train', test_case=None, options=None, seed=None):
         import numpy as np
-        self.bottom = rand.uniform(-1000, 1000)
+        self.bottom = rand.uniform(-500, 500)
         self.top = self.bottom + sample_truncated_normal(7, 5, 16)
         def set_robot_position(self):
             # ロボットの出発地点と目的地の範囲設定
@@ -493,8 +497,12 @@ class CrowdSim(gym.Env):
         ob = [other_human.get_observable_state() for other_human in self.humans]
         robot_action = self.robot.imact(ob, self.bottom, self.top)
         action = robot_action
+        action[0] = action[0] * 100
+        action[1] = action[1] * 100 + 314
+        # imitation end
 
-
+        action[0] = action[0] /100
+        action[1] = action[1] /100 - 3.14
         dmin = float('inf')
         dmin=[]
         collision = False
@@ -524,7 +532,7 @@ class CrowdSim(gym.Env):
             
             # 避けるべきゼロ割を防ぐ
             if norm_product != 0:
-                angle = np.arccos(dot_product / norm_product)
+                angle = np.arccos(np.clip(dot_product / norm_product,-1.,1.))
             else:
                 angle = np.pi  # 180度：ロボットは視界内にいないと仮定
             if closest_dist < 0:
@@ -569,19 +577,21 @@ class CrowdSim(gym.Env):
         end_position = np.array(self.robot.compute_position(action, self.time_step))
         reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < self.robot.radius
         truncated = False
+        # print(np.array([action.v*100, action.r*100]))
+        # print(np.array([np.clip((action.v * 100).astype(np.int32),0,100), np.clip((action.r * 100).astype(np.int32),-314,314)]))
         if self.global_time >= self.time_limit - 1:
             reward = 0.0
             done = True
-            info = {'event': 'timeout', 'action': np.array([action.v, action.r])}
+            info = {'event': 'timeout', 'action': np.array([np.clip((action.v * 100).astype(np.int32),0,100), np.clip((action.r * 100).astype(np.int32),-314,314)+314])}
             truncated = True
         elif collision:
             reward = self.collision_penalty
             done = True
-            info = {'event': 'collision', 'action': np.array([action.v, action.r])}
+            info = {'event': 'collision', 'action': np.array([np.clip((action.v * 100).astype(np.int32),0,100), np.clip((action.r * 100).astype(np.int32),-314,314)+314])}
         elif reaching_goal:
             reward = self.success_reward
             done = True
-            info = {'event': 'reaching_goal', 'action': np.array([action.v, action.r])}
+            info = {'event': 'reaching_goal', 'action': np.array([np.clip((action.v * 100).astype(np.int32),0,100), np.clip((action.r * 100).astype(np.int32),-314,314)+314])}
         elif any(dist < self.discomfort_dist for dist in dmin):
             # self.discomfort_distより小さいすべての距離に対して報酬を計算
             rewards = [(dist - self.discomfort_dist) * self.discomfort_penalty_factor * self.time_step for dist in dmin if dist < self.discomfort_dist]
@@ -592,12 +602,12 @@ class CrowdSim(gym.Env):
             # 何かしらの距離がself.discomfort_distより小さい場合のみ、イベントとして記録
             if rewards:
                 done = False
-                info = {'event': 'danger', 'min_dists': [dist for dist in dmin if dist < self.discomfort_dist], 'action': np.array([action.v, action.r])}
+                info = {'event': 'danger', 'min_dists': [dist for dist in dmin if dist < self.discomfort_dist], 'action': np.array([np.clip((action.v * 100).astype(np.int32),0,100), np.clip((action.r * 100).astype(np.int32),-314,314)+314])}
                 reward = total_reward
         else:
             reward = 0.0
             done = False
-            info = {'event': 'nothing', 'action': np.array([action.v, action.r])}
+            info = {'event': 'nothing', 'action': np.array([np.clip((action.v * 100).astype(np.int32),0,100), np.clip((action.r * 100).astype(np.int32),-314,314)+314])}
         if update:
             # store state, action value and attention weights
             self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans]])

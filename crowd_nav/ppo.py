@@ -226,7 +226,7 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # 専門家のデータセットをロード
-    expert_dataset = torch.load("expert_dataset.pt")
+    expert_dataset = torch.load("expert_dataset_dis.pt")
     expert_obs, expert_act, expert_done, expert_info = expert_dataset['observations'], expert_dataset['actions'], expert_dataset['dones'], expert_dataset['infos']
 
     # 環境の設定
@@ -243,7 +243,7 @@ if __name__ == '__main__':
     all_acts = np.concatenate(expert_act)
     all_dones = np.concatenate(expert_done)
     # print(all_obs.shape)
-    # print(all_acts.shape)
+    print(all_acts.shape)
     # print(all_dones.shape)
     # print(all_dones)
     all_next_obs = np.concatenate([all_obs[1:], np.zeros_like(all_obs[0:1])])
@@ -270,7 +270,7 @@ if __name__ == '__main__':
         reward_net=reward_net,
         allow_variable_horizon=True,
     )
-    timesteps = 1024 * 1024 * 16
+    timesteps = 1024 * 16
     checkpoint_callback = CheckpointCallback(
                         save_freq = max(1024*128 // 8, 1),
                         save_path="./logs/",
@@ -278,11 +278,11 @@ if __name__ == '__main__':
                         save_replay_buffer=True,
                         save_vecnormalize=True,
                         )
-    progress_bar_callback = ProgressBarCallback(timesteps=timesteps / 8) 
+    progress_bar_callback = ProgressBarCallback(total_timesteps=timesteps / 8) 
     callbacks = [checkpoint_callback, progress_bar_callback]
 
     gail_trainer.policy.to(device)
-    gail_trainer.train(timesteps, callbacks=callbacks)
+    gail_trainer.train(timesteps, callback=callbacks)
     trained_model = gail_trainer.gen_algo
     model = trained_model
     model.save("ppo_crowdnav_imitation")
@@ -291,11 +291,11 @@ if __name__ == '__main__':
     model = trained_model
     model.save("ppo_crowdnav_imitation")
     print("imitation learning done")
-    # PPOでの追加トレーニング
-    
 
+    # PPOでの追加トレーニング
     env = make_vec_env('CrowdSim-v0', vec_env_cls=SubprocVecEnv, n_envs=8)
-    model = PPO.load("ppo_crowdnav_imitation.zip", env=env)
+    # model = PPO.load("ppo_crowdnav_imitation.zip", env=env)
+    # model = PPO("MultiInputPolicy", env, policy_kwargs=policy_kwargs, verbose=1, tensorboard_log="./ppo_tensorboard/")
     
     timesteps = 1024 * 1024 * 16
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

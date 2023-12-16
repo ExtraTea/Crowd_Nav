@@ -120,8 +120,8 @@ def run_environment(executions):
     return all_observations, all_actions, all_dones, all_infos
 
 def main():
-    number_of_processes = 32
-    total_executions = 1024 * 32
+    number_of_processes = 16
+    total_executions = 1024 * 4
 
     executions_per_process = total_executions // number_of_processes
     extra_executions = total_executions % number_of_processes
@@ -138,14 +138,14 @@ def main():
         ]
         for future in concurrent.futures.as_completed(futures):
             observations, actions, dones, infos = future.result()
-            all_observations.append(observations)
-            all_actions.append(actions)
-            all_dones.append(dones)
-            all_infos.append(infos)
+            all_observations.extend(observations)
+            all_actions.extend(actions)
+            all_dones.extend(dones)
+            all_infos.extend(infos)
 
     # 結果をまとめて保存
     dataset = {'observations': all_observations, 'actions': all_actions, 'dones': all_dones, 'infos': all_infos}
-    torch.save(dataset, "expert_dataset_wall.pt")
+    torch.save(dataset, "expert_dataset_dis.pt")
 
 if __name__ == "__main__":
     main()
